@@ -90,11 +90,18 @@ class ECMWFOpenData(PrecipForecastSource):
                         eccodes.codes_release(h)
                     lat = lat0 + (dlat if jpos else -dlat) * np.arange(nj)
                     lon = ((lon0 + dlon * np.arange(ni)) + 180.0) % 360.0 - 180.0
+                    field = vals.reshape(nj, ni)
+                    if not np.allclose(lon, self.lon, atol=1e-3):
+                        # some cycles are published with longitude starting at 0 instead of -180:
+                        # roll the field so that its columns line up with the weight grid
+                        k = int(np.argmin(np.abs(lon - self.lon[0])))
+                        field = np.roll(field, -k, axis=1)
+                        lon = np.roll(lon, -k)
                     check_grid(self.lat, self.lon, lat, lon)
                     factor = UNIT_TO_MM.get(units)
                     if factor is None:
                         raise ValueError(f"unknown tp units {units!r}")
-                    accum[step] = weighted_mean(self.W, vals.reshape(1, -1) * factor)[0]
+                    accum[step] = weighted_mean(self.W, field.reshape(1, -1) * factor)[0]
         missing = [s for s in self.steps if s not in accum]
         if missing:
             log.warning("%s %s: missing steps %s", self.model, init, missing)
