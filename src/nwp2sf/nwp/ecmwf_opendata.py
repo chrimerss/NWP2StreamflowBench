@@ -22,7 +22,8 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from ..gridweights import check_grid, load_weights, weighted_mean
+from ..basins import load_grid_weights
+from ..gridweights import check_grid, weighted_mean
 from .base import PrecipForecastSource
 
 log = logging.getLogger(__name__)
@@ -38,9 +39,7 @@ class ECMWFOpenData(PrecipForecastSource):
         self.model = model
         self.source = source
         self.resol = resol
-        self.W, self.lat, self.lon, wids = load_weights(self.data_dir / "basins" / f"weights_{self.grid}.npz")
-        if wids != self.basin_ids:
-            raise ValueError("weight file basin order does not match the requested basin set")
+        self.W, self.lat, self.lon, _ = load_grid_weights(self.data_dir, self.grid, self.basin_ids)
         from ecmwf.opendata import Client
         self.client = Client(source=source, model=model, resol=resol)
         # 360 h is the open-data horizon for both IFS (oper) and AIFS-single

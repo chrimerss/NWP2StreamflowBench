@@ -44,7 +44,8 @@ header .meta { color: var(--muted); font-size: 13px; }
 .card h2 { font-size: 16px; margin: 0 0 2px; }
 .card .desc { color: var(--ink-2); font-size: 13px; margin: 0 0 8px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+@media (max-width: 1000px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
 th { color: var(--ink-2); font-weight: 500; font-size: 12px; }
@@ -75,19 +76,25 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   <label>Region <select id="region"></select></label>
   <label>Metric <select id="metric"><option value="nse">NSE</option><option value="kge">KGE</option></select></label>
   <label><input type="checkbox" id="iqr" checked> Show interquartile band</label>
+  <label><input type="checkbox" id="kge" checked> Show KGE beside NSE</label>
 </div>
 
 <div class="card">
   <h2>Leaderboard</h2>
-  <p class="desc">Median score across basins at selected lead days. <em>Reference</em> is the same model driven by the gridMET analysis instead of a forecast — the ceiling any precipitation forecast can reach. Skill horizon: last lead day whose median score exceeds 0 (better than the observed mean).</p>
+  <p class="desc" id="lbdesc">Median score across basins at selected lead days. <em>Reference</em> is the same model driven by the gridMET analysis instead of a forecast — the ceiling any precipitation forecast can reach. Skill horizon: last lead day whose median score exceeds 0 (better than the observed mean).</p>
   <div class="tablewrap"><table id="leaderboard"></table></div>
 </div>
 
-<div class="grid2">
+<div class="grid2" id="chartrow">
   <div class="card">
-    <h2>Streamflow skill vs lead time</h2>
+    <h2 id="skilltitle">Streamflow skill vs lead time</h2>
     <p class="desc">Median across basins; band = 25th–75th percentile. Dashed grey line: analysis-forced reference.</p>
     <div id="skill" class="chart"></div>
+  </div>
+  <div class="card" id="kgecard">
+    <h2>Streamflow KGE vs lead time</h2>
+    <p class="desc">Kling–Gupta efficiency for the same runs: combines correlation, variability ratio and volume bias.</p>
+    <div id="skillkge" class="chart"></div>
   </div>
   <div class="card">
     <h2>Precipitation skill vs lead time</h2>
@@ -177,7 +184,7 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   // ---------- controls ----------
   const regionSel = document.getElementById('region');
   ['All', ...regions].forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r === 'All' ? 'All basins' : r; regionSel.appendChild(o); });
-  const metricSel = document.getElementById('metric'), iqrBox = document.getElementById('iqr');
+  const metricSel = document.getElementById('metric'), iqrBox = document.getElementById('iqr'), kgeBox = document.getElementById('kge');
   for (const id of ['mapmodel', 'tabmodel']) {
     const sel = document.getElementById(id);
     models.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; sel.appendChild(o); });
@@ -197,42 +204,50 @@ footer ul { padding-left: 18px; margin: 4px 0; }
       const n = document.createElement('div'); n.className = 'note'; n.textContent = note;
       d.append(l, v, n); box.appendChild(d);
     };
-    const r = refVal(region, key);
-    add(`Reference ${key.toUpperCase()} (analysis-forced)`, fmt(r.median), `median of ${r.n} basins · ceiling`);
+    const both = kgeBox.checked, other = key === 'nse' ? 'kge' : 'nse';
+    const pair = (a, b) => both ? `${fmt(a)} / ${fmt(b)}` : fmt(a);
+    const lab = both ? `${key.toUpperCase()} / ${other.toUpperCase()}` : key.toUpperCase();
+    const r = refVal(region, key), r2 = refVal(region, other);
+    add(`Reference ${lab} (analysis-forced)`, pair(r.median, r2.median), `median of ${r.n} basins · ceiling`);
     models.forEach((m, i) => {
       if (!S.streamflow[m.id]) return;
-      const s = series(S.streamflow, m.id, region, key);
-      const d1 = s.find(x => x.lead === 1) || {};
+      const s = series(S.streamflow, m.id, region, key), s2 = series(S.streamflow, m.id, region, other);
+      const d1 = s.find(x => x.lead === 1) || {}, d2 = s2.find(x => x.lead === 1) || {};
       const horizon = s.filter(x => x.median !== null && x.median > 0).map(x => x.lead);
-      add(`${m.name} · day 1`, fmt(d1.median), `skill horizon: ${horizon.length ? 'day ' + Math.max(...horizon) : 'none'} (median ${key.toUpperCase()} > 0)`, colorOf(i));
+      add(`${m.name} · day 1 ${lab}`, pair(d1.median, d2.median), `skill horizon: ${horizon.length ? 'day ' + Math.max(...horizon) : 'none'} (median ${key.toUpperCase()} > 0)`, colorOf(i));
     });
   }
 
   // ---------- leaderboard ----------
   function leaderboard() {
     const key = metricSel.value, region = regionSel.value, tb = document.getElementById('leaderboard');
+    const both = kgeBox.checked, other = key === 'nse' ? 'kge' : 'nse';
+    const pair = (a, b) => both ? `${fmt(a)} / ${fmt(b)}` : fmt(a);
     const showLeads = [1, 2, 3, 5, 7, 10, 14].filter(l => leads.includes(l));
+    document.getElementById('lbdesc').firstChild.textContent = both
+      ? `Median ${key.toUpperCase()} / ${other.toUpperCase()} across basins at selected lead days. `
+      : `Median ${key.toUpperCase()} across basins at selected lead days. `;
     tb.replaceChildren();
     const thead = tb.createTHead(); const hr = thead.insertRow();
     ['Model', ...showLeads.map(l => `day ${l}`), 'Skill horizon', 'P corr day 1', 'Basins'].forEach(t => { const th = document.createElement('th'); th.textContent = t; hr.appendChild(th); });
     const body = tb.createTBody();
     const rows = models.filter(m => S.streamflow[m.id]).map((m, i) => {
-      const s = series(S.streamflow, m.id, region, key), p = series(S.precip, m.id, region, 'corr');
-      const at = l => (s.find(x => x.lead === l) || {}).median;
+      const s = series(S.streamflow, m.id, region, key), s2 = series(S.streamflow, m.id, region, other), p = series(S.precip, m.id, region, 'corr');
+      const at = l => (s.find(x => x.lead === l) || {}).median, at2 = l => (s2.find(x => x.lead === l) || {}).median;
       const horizon = s.filter(x => x.median !== null && x.median > 0).map(x => x.lead);
-      return {m, i, at, horizon: horizon.length ? Math.max(...horizon) : 0, p1: (p.find(x => x.lead === 1) || {}).median, n: (s[0] || {}).n};
+      return {m, i, at, at2, horizon: horizon.length ? Math.max(...horizon) : 0, p1: (p.find(x => x.lead === 1) || {}).median, n: (s[0] || {}).n};
     }).sort((a, b) => (b.at(1) ?? -9) - (a.at(1) ?? -9));
     rows.forEach((r, k) => {
       const tr = body.insertRow(); if (k === 0) tr.className = 'best';
       const c0 = tr.insertCell(); const sw = document.createElement('span'); sw.className = 'key'; sw.style.background = colorOf(r.i); c0.append(sw, document.createTextNode(r.m.name));
-      showLeads.forEach(l => { tr.insertCell().textContent = fmt(r.at(l)); });
+      showLeads.forEach(l => { tr.insertCell().textContent = pair(r.at(l), r.at2(l)); });
       tr.insertCell().textContent = r.horizon ? `day ${r.horizon}` : '–';
       tr.insertCell().textContent = fmt(r.p1);
       tr.insertCell().textContent = r.n ?? '–';
     });
-    const ref = refVal(region, key), tr = body.insertRow();
+    const ref = refVal(region, key), ref2 = refVal(region, other), tr = body.insertRow();
     const c0 = tr.insertCell(); const sw = document.createElement('span'); sw.className = 'key'; sw.style.background = css('--ref'); c0.append(sw, document.createTextNode('Reference (gridMET analysis)'));
-    showLeads.forEach(() => { tr.insertCell().textContent = fmt(ref.median); });
+    showLeads.forEach(() => { tr.insertCell().textContent = pair(ref.median, ref2.median); });
     tr.insertCell().textContent = '–'; tr.insertCell().textContent = '1.00'; tr.insertCell().textContent = ref.n;
   }
 
@@ -319,13 +334,20 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   }
 
   function renderAll() {
+    const key = metricSel.value, other = key === 'nse' ? 'kge' : 'nse', both = kgeBox.checked;
+    document.getElementById('chartrow').className = both ? 'grid3' : 'grid2';
+    document.getElementById('kgecard').hidden = !both;
+    document.getElementById('skilltitle').textContent = `Streamflow ${key.toUpperCase()} vs lead time`;
+    document.querySelector('#kgecard h2').textContent = `Streamflow ${other.toUpperCase()} vs lead time`;
     kpis(); leaderboard();
-    skillChart('skill', S.streamflow, metricSel.value, `Median ${metricSel.value.toUpperCase()} (streamflow)`, true);
+    skillChart('skill', S.streamflow, key, `Median ${key.toUpperCase()} (streamflow)`, true);
+    if (both) skillChart('skillkge', S.streamflow, other, `Median ${other.toUpperCase()} (streamflow)`, true);
     skillChart('pskill', S.precip, 'corr', 'Median correlation (precipitation)', false);
     regionPanels(); mapChart(); regionTable();
   }
-  ['region', 'metric', 'iqr', 'mapmodel', 'maplead', 'mapdelta', 'tabmodel'].forEach(id => document.getElementById(id).addEventListener('input', renderAll));
+  ['region', 'metric', 'iqr', 'kge', 'mapmodel', 'maplead', 'mapdelta', 'tabmodel'].forEach(id => document.getElementById(id).addEventListener('input', renderAll));
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+  window.addEventListener('resize', () => { for (const id of ['skill','skillkge','pskill','regions','map']) { const d = document.getElementById(id); if (d && d.data && !d.hidden) Plotly.Plots.resize(d); } });
   renderAll();
 })().catch(e => { document.getElementById('meta').textContent = 'Failed to load data: ' + e; });
 </script>

@@ -27,9 +27,10 @@ gridMET analysis ──► dCREST (dCREST-CAMELS v1.0) ──► simulated disch
   released **dCREST-CAMELS v1.0** parameters (665 catchments, calibrated on
   Daymet under the community benchmark protocol). Parameters are used as
   published; nothing is recalibrated.
-* **Basins.** All 665 catchments in the parameter set, with GAGES-II polygons
-  (the CAMELS source). Basin means are exact area-weighted grid-cell coverage
-  fractions on each source grid (`data/basins/weights_*.npz`).
+* **Basins.** The 665 catchments in the parameter set minus 32 gauges that no
+  longer report (`data/basins/excluded.csv`), i.e. 633 basins, with GAGES-II
+  polygons (the CAMELS source). Basin means are exact area-weighted grid-cell
+  coverage fractions on each source grid (`data/basins/weights_*.npz`).
 * **Analysis forcing.** [gridMET](https://www.climatologylab.org/gridmet.html)
   (4 km, ~1-day latency): precipitation, Tmin/Tmax, and Oudin PET (the PET
   formulation dCREST-CAMELS was calibrated with). The analysis-forced run from
@@ -47,7 +48,7 @@ gridMET analysis ──► dCREST (dCREST-CAMELS v1.0) ──► simulated disch
   initialisations into one series per basin and scored against USGS daily mean
   discharge (mm/day over the CAMELS area) with NSE and KGE over a window common
   to all leads (≥ 60 valid days per basin). Reported numbers are medians and
-  quartiles across basins; regions are the nine NOAA/NCEI climate regions,
+  quartiles across basins (NSE and KGE side by side on the dashboard); regions are the nine NOAA/NCEI climate regions,
   assigned by gauge state. Precipitation skill (correlation/NSE of basin-mean
   forecast vs analysis precipitation) is scored alongside so that the loss from
   rain to river is visible.

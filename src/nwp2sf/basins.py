@@ -6,6 +6,9 @@ never need the 200 MB GAGES-II shapefile archive:
 * ``basins.csv`` — one row per gauge: id, name, lat, lon, state, climate region,
   HUC02, drainage area (km2, CAMELS value used by the parameter set).
 * ``weights_<grid>.npz`` — sparse basin/grid coverage weights per source grid.
+* ``excluded.csv`` — gauges dropped from the benchmark (e.g. inactive gauges with
+  no observations in the benchmark period); ``load_basins`` removes them and
+  weight rows are subset accordingly.
 
 ``build`` regenerates both from the GAGES-II shapefiles; ``load_basins`` and
 ``load_grid_weights`` read them back.
@@ -13,7 +16,7 @@ never need the 200 MB GAGES-II shapefile archive:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -42,13 +45,31 @@ def weights_path(data_dir: Path, grid: str) -> Path:
     return Path(data_dir) / "basins" / f"weights_{grid}.npz"
 
 
-def load_basins(data_dir: Path) -> pd.DataFrame:
+def excluded_csv(data_dir: Path) -> Path:
+    return Path(data_dir) / "basins" / "excluded.csv"
+
+
+def load_basins(data_dir: Path, include_excluded: bool = False) -> pd.DataFrame:
+    """Benchmark basin set: ``basins.csv`` minus the gauges listed in ``excluded.csv``."""
     df = pd.read_csv(basins_csv(data_dir), dtype={"gauge_id": str, "huc02": str})
+    ex = excluded_csv(data_dir)
+    if ex.exists() and not include_excluded:
+        drop = set(pd.read_csv(ex, dtype={"gauge_id": str}).gauge_id)
+        df = df[~df.gauge_id.isin(drop)]
     return df.set_index("gauge_id", drop=False)
 
 
-def load_grid_weights(data_dir: Path, grid: str):
-    return load_weights(weights_path(data_dir, grid))
+def load_grid_weights(data_dir: Path, grid: str, ids: Optional[List[str]] = None):
+    """``(W, lat, lon, ids)`` for ``grid``; rows subset and ordered to ``ids`` when given."""
+    W, lat, lon, wids = load_weights(weights_path(data_dir, grid))
+    if ids is not None:
+        pos = {b: i for i, b in enumerate(wids)}
+        miss = [b for b in ids if b not in pos]
+        if miss:
+            raise KeyError(f"{len(miss)} basins missing from weights_{grid}.npz: {miss[:5]}")
+        W = W[[pos[b] for b in ids]]
+        wids = list(ids)
+    return W, lat, lon, wids
 
 
 def parameter_ids(param_npz: Path) -> List[str]:

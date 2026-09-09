@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .gridweights import check_grid, load_weights, weighted_mean
+from .gridweights import check_grid, weighted_mean
 
 log = logging.getLogger(__name__)
 
@@ -97,9 +97,8 @@ def _extract_year(cache_dir: Path, W, wlat, wlon, year: int, months: List[int], 
 def update(data_dir: Path, cache_dir: Path, basin_ids: List[str], basin_lat: np.ndarray, start: date,
            refresh_months: int = 3, pet: str = "oudin") -> pd.DataFrame:
     """Bring the stored basin-mean forcing up to date and return the whole record."""
-    W, wlat, wlon, wids = load_weights(Path(data_dir) / "basins" / f"weights_{GRID}.npz")
-    if wids != list(basin_ids):
-        raise ValueError("gridMET weight file basin order does not match the basin set")
+    from .basins import load_grid_weights
+    W, wlat, wlon, _ = load_grid_weights(data_dir, GRID, list(basin_ids))
     sd = store_dir(data_dir)
     sd.mkdir(parents=True, exist_ok=True)
     today = pd.Timestamp.today().normalize()
