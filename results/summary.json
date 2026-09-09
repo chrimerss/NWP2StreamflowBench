@@ -15375,7 +15375,7 @@
   }
  },
  "meta": {
-  "generated": "2026-09-09T04:25Z",
+  "generated": "2026-09-09T05:04Z",
   "window_start": "2026-01-15",
   "window_end": "2026-09-08",
   "n_days": 237,
@@ -15384,7 +15384,8 @@
   "init_hour": 0,
   "n_inits": {
    "ifs": 251,
-   "aifs": 251
+   "aifs": 251,
+   "wn3": 0
   },
   "analysis_end": "2026-09-07",
   "obs_end": "2026-09-08",
@@ -15417,6 +15418,10 @@
    {
     "id": "aifs",
     "name": "ECMWF AIFS-single (0.25\u00b0)"
+   },
+   {
+    "id": "wn3",
+    "name": "Google WeatherNext 3 (IMERG, 0.1\u00b0)"
    }
   ]
  }

@@ -5,16 +5,18 @@
 NWP2StreamflowBench propagates precipitation forecasts from numerical weather
 prediction (NWP) models through a calibrated hydrologic model on hundreds of
 U.S. catchments and scores the resulting streamflow against USGS observations,
-as a function of forecast lead time and climate region. The first two entrants
-are ECMWF's physics-based **IFS** and its AI model **AIFS-single**; the pipeline
-is model-agnostic so in-house AI NWP models can be added with one class.
+as a function of forecast lead time and climate region. Entrants so far are
+ECMWF's physics-based **IFS**, its AI model **AIFS-single**, and Google
+DeepMind's **WeatherNext 3** (IMERG-trained precipitation head, 0.1°); the
+pipeline is model-agnostic so in-house AI NWP models can be added with one class.
 
 **Dashboard:** https://chrimerss.github.io/NWP2StreamflowBench/
 
 ## Design
 
 ```
-ECMWF open data (AWS)  ─┐  basin-mean daily precipitation (mm/day)
+ECMWF open data (AWS)  ─┐
+WeatherNext 3 (GCS)    ─┤  basin-mean daily precipitation (mm/day)
 in-house NWP (future)  ─┘        │  lead days 1..14, 00 UTC cycles
                                  ▼
 gridMET analysis ──► dCREST (dCREST-CAMELS v1.0) ──► simulated discharge ──► NSE / KGE vs USGS
@@ -76,6 +78,31 @@ The committed `data/basins/` files were built with
 `python scripts/build_basins.py` (needs the `basins` extra and the 200 MB
 GAGES-II archive); routine runs and CI never need the shapefiles.
 
+## WeatherNext 3
+
+Google DeepMind's WeatherNext 3 is read from its Zarr v3 stores on Google Cloud
+Storage (`nwp2sf/nwp/weathernext.py`). The benchmark uses the `imerg_tp_1hr`
+head — precipitation trained against NASA IMERG — on the 0.1° surface grid,
+summed from hourly accumulations into the same 06–06 UTC days as the other
+models. By default the ensemble mean from the free statistics bucket is used;
+set `store: ensemble` with `member: <0..63>` (or no member for the mean) in
+`configs/benchmark.yaml` to use raw members from the requester-pays bucket.
+
+Access is allowlisted per Google account, so two one-off steps are needed:
+
+1. Submit the [WeatherNext data request form](https://developers.google.com/weathernext/guides/access-forecast)
+   with the Google account you will use (approval typically takes 5–7 business days).
+2. Authenticate: `pip install -e ".[weathernext]"`, then
+   `gcloud auth application-default login` locally, or put a service-account
+   JSON key in the `GOOGLE_APPLICATION_CREDENTIALS` secret for the daily
+   GitHub Action. Set `GOOGLE_CLOUD_PROJECT` if you use the requester-pays
+   ensemble bucket.
+
+Then `nwp2sf fetch-nwp --model wn3` backfills every 00 UTC cycle since
+2026-01-01 (the first fetch also builds `data/basins/weights_wn3_0p1.npz` from
+the store's grid; commit it). Until credentials are present the source reports
+no initialisations and the rest of the benchmark runs unchanged.
+
 ## Adding a model
 
 Implement `nwp2sf.nwp.base.PrecipForecastSource` — two methods,
@@ -100,7 +127,7 @@ rebuild the weights. Extracted basin-mean forecasts are stored per init under
 configs/benchmark.yaml      settings
 src/nwp2sf/
   basins.py, gridweights.py   basin set, GAGES-II polygons, coverage weights
-  nwp/                        forecast sources (base interface, ECMWF open data)
+  nwp/                        forecast sources (base interface, ECMWF open data, WeatherNext 3)
   analysis.py                 gridMET forcing + Oudin PET
   usgs.py                     USGS Water Data API
   hydro.py                    dCREST driver, forecast splicing
@@ -116,6 +143,8 @@ docs/                       GitHub Pages dashboard
 
 * ECMWF open data (IFS HRES, AIFS-single; 0.25°) via `ecmwf-opendata` from the
   AWS Open Data mirror — © ECMWF, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+* WeatherNext 3 (Google DeepMind / Google Research) — historical forecasts under
+  CC BY 4.0, real-time data under the GDM experimental terms; access by request.
 * gridMET — Abatzoglou (2013), Climatology Lab, UC Merced.
 * USGS Water Data for the Nation daily values (provisional data are revised).
 * GAGES-II (Falcone 2011); CAMELS-US (Newman et al. 2015; Addor et al. 2017).

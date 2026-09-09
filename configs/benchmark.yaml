@@ -29,6 +29,12 @@ models:
     name: "ECMWF AIFS-single (0.25°)"
     fetcher: nwp2sf.nwp.ecmwf_opendata:ECMWFOpenData
     kwargs: {model: aifs-single}
+  - id: wn3
+    name: "Google WeatherNext 3 (IMERG, 0.1°)"
+    fetcher: nwp2sf.nwp.weathernext:WeatherNext3
+    # imerg_tp_1hr = precipitation head trained on NASA IMERG; store: statistics (free) or ensemble
+    # (requester-pays, 64 members: member: <int> or ensemble mean). Needs allowlisted Google credentials.
+    kwargs: {variable: imerg_tp_1hr, store: statistics, stat: mean}
 
 analysis:
   source: gridmet                 # observed-forcing proxy used for spin-up and as the precipitation reference

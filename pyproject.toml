@@ -28,6 +28,8 @@ dependencies = [
 [project.optional-dependencies]
 # Only needed to (re)build the basin weight matrices from the GAGES-II shapefiles.
 basins = ["geopandas>=0.14", "shapely>=2.0", "pyproj>=3.5"]
+# WeatherNext 3 on Google Cloud Storage (Zarr v3)
+weathernext = ["zarr>=3", "gcsfs>=2024.6", "google-auth>=2"]
 test = ["pytest>=7"]
 
 [project.scripts]

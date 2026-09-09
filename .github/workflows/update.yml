@@ -30,7 +30,7 @@ jobs:
       - name: Install
         run: |
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet -e .
+          pip install --quiet -e ".[weathernext]"
       - name: Cache gridMET annual files
         uses: actions/cache@v4
         with:
@@ -40,7 +40,13 @@ jobs:
       - name: Fetch, run, score, build site
         env:
           API_USGS_PAT: ${{ secrets.API_USGS_PAT }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
         run: |
+          # WeatherNext 3 (optional): service-account key -> Application Default Credentials
+          if [ -n "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" ]; then
+            echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > "$RUNNER_TEMP/gcp-key.json"
+            export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/gcp-key.json"
+          fi
           nwp2sf fetch-analysis
           nwp2sf fetch-obs
           nwp2sf fetch-nwp --workers 4 ${{ inputs.overwrite && '--overwrite' || '' }}

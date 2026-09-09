@@ -103,6 +103,27 @@ def fetch_gagesii(cache_dir: Path) -> Path:
     return root
 
 
+def build_grid_weights(data_dir: Path, cache_dir: Path, grid: str, lat: np.ndarray, lon: np.ndarray):
+    """Build (and save) the weight file for one grid from the GAGES-II polygons. Needs geopandas.
+
+    Used by sources whose grid is only known once their data are opened (e.g.
+    WeatherNext 3). Returns ``(W, ids)`` in ``basins.csv`` order (all gauges,
+    excluded ones included, so the file stays valid if the exclusion list changes).
+    """
+    import geopandas as gpd
+
+    root = fetch_gagesii(cache_dir)
+    meta = pd.read_csv(basins_csv(data_dir), dtype={"gauge_id": str})
+    ids = list(meta.gauge_id)
+    shp = root / "boundaries-shapefiles-by-aggeco"
+    polys = pd.concat([gpd.read_file(f) for f in sorted(shp.glob("bas_*.shp"))])
+    polys = polys.drop_duplicates("GAGE_ID").set_index("GAGE_ID").loc[ids].to_crs(4326)
+    lon = np.sort(np.asarray(lon, dtype=float))
+    W = coverage_weights(polys.geometry.values, lat, lon)
+    save_weights(weights_path(data_dir, grid), W, lat, lon, ids)
+    return W, ids
+
+
 def build(data_dir: Path, cache_dir: Path, param_npz: Path, grids: Dict[str, Tuple[np.ndarray, np.ndarray]] | None = None,
           extra_grids: Dict[str, Tuple[np.ndarray, np.ndarray]] | None = None) -> pd.DataFrame:
     """Create ``basins.csv`` and one weight file per grid. Needs geopandas."""

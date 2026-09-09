@@ -47,7 +47,7 @@ header .meta { color: var(--muted); font-size: 13px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 @media (max-width: 1000px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
 th { color: var(--ink-2); font-weight: 500; font-size: 12px; }
 td:first-child, th:first-child { text-align: left; }
 tr.best td { font-weight: 600; }
@@ -140,6 +140,7 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   <h3>Data &amp; attribution</h3>
   <ul>
     <li>ECMWF open data (IFS HRES and AIFS-single, 0.25°) via the <code>ecmwf-opendata</code> client from the AWS mirror — © ECMWF, CC BY 4.0.</li>
+    <li>Google DeepMind WeatherNext 3 (0.1° <code>imerg_tp_1hr</code> head, ensemble mean) from its Cloud Storage Zarr stores — historical data CC BY 4.0, access by request.</li>
     <li>gridMET (Abatzoglou 2013), Climatology Lab, University of California Merced.</li>
     <li>USGS Water Data for the Nation, daily discharge (provisional data are subject to revision).</li>
     <li>GAGES-II basin boundaries (Falcone 2011); CAMELS-US (Newman et al. 2015; Addor et al. 2017).</li>
@@ -164,6 +165,7 @@ footer ul { padding-left: 18px; margin: 4px 0; }
 
   // ---------- helpers ----------
   const series = (block, mid, region, key) => {
+    if (!block[mid]) return [];
     const rows = region === 'All' ? block[mid].overall : block[mid].by_region[region];
     return rows.map(r => ({lead: r.lead, ...r[key]}));
   };
@@ -185,9 +187,10 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   const regionSel = document.getElementById('region');
   ['All', ...regions].forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r === 'All' ? 'All basins' : r; regionSel.appendChild(o); });
   const metricSel = document.getElementById('metric'), iqrBox = document.getElementById('iqr'), kgeBox = document.getElementById('kge');
+  const withData = models.filter(m => S.streamflow[m.id]);
   for (const id of ['mapmodel', 'tabmodel']) {
     const sel = document.getElementById(id);
-    models.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; sel.appendChild(o); });
+    withData.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; sel.appendChild(o); });
   }
   const mapLead = document.getElementById('maplead'); mapLead.max = leads[leads.length - 1];
 
@@ -244,6 +247,11 @@ footer ul { padding-left: 18px; margin: 4px 0; }
       tr.insertCell().textContent = r.horizon ? `day ${r.horizon}` : '–';
       tr.insertCell().textContent = fmt(r.p1);
       tr.insertCell().textContent = r.n ?? '–';
+    });
+    models.filter(m => !S.streamflow[m.id]).forEach((m) => {
+      const tr = body.insertRow(); tr.style.color = css('--muted');
+      const c0 = tr.insertCell(); const sw = document.createElement('span'); sw.className = 'key'; sw.style.background = colorOf(models.indexOf(m)); c0.append(sw, document.createTextNode(m.name));
+      const c = tr.insertCell(); c.colSpan = showLeads.length + 3; c.style.textAlign = 'left'; c.textContent = 'no forecasts scored yet (data access pending)';
     });
     const ref = refVal(region, key), ref2 = refVal(region, other), tr = body.insertRow();
     const c0 = tr.insertCell(); const sw = document.createElement('span'); sw.className = 'key'; sw.style.background = css('--ref'); c0.append(sw, document.createTextNode('Reference (gridMET analysis)'));
