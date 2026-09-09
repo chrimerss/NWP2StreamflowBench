@@ -1,0 +1,45 @@
+# NWP2StreamflowBench configuration.
+# Paths are relative to the repository root unless absolute.
+
+benchmark:
+  start_date: "2026-01-01"        # first forecast initialisation scored
+  end_date: null                  # null = latest available
+  init_hour: 0                    # UTC cycle (00Z only for now)
+  day_start_hour: 6               # forecast "day" d = [init + 6 + 24 (d-1) h, init + 6 + 24 d h): aligns the NWP
+                                  # accumulation window with gridMET's day (which ends 07 UTC), so analysis and
+                                  # forecast precipitation share one day definition. Steps 6, 30, ... exist in
+                                  # both IFS (3-hourly) and AIFS (6-hourly) open data.
+  lead_days: 14                   # daily leads 1..lead_days (360 h horizon -> 14 full days from 06 UTC)
+  min_score_days: 60              # basins with fewer valid obs days are not scored
+  spinup_start: "2023-01-01"      # analysis-driven warm-up starts here (3 y before start_date)
+  forcing_lag_days: 1             # dCREST-CAMELS was calibrated on Daymet, whose "day D" precipitation is
+                                  # largely the station-observer day ending the morning of D (i.e. rain that
+                                  # fell on D-1). Feeding calendar-day-aligned forcing (gridMET, NWP) with a
+                                  # one-day lag reproduces that convention; without it the simulated
+                                  # hydrograph leads USGS observations by a day (median NSE 0.15 vs 0.52).
+
+# NWP precipitation sources. Each entry maps to a class in nwp2sf.nwp.
+# Add in-house models here; see nwp2sf/nwp/base.py for the interface.
+models:
+  - id: ifs
+    name: "ECMWF IFS (HRES, 0.25°)"
+    fetcher: nwp2sf.nwp.ecmwf_opendata:ECMWFOpenData
+    kwargs: {model: ifs}
+  - id: aifs
+    name: "ECMWF AIFS-single (0.25°)"
+    fetcher: nwp2sf.nwp.ecmwf_opendata:ECMWFOpenData
+    kwargs: {model: aifs-single}
+
+analysis:
+  source: gridmet                 # observed-forcing proxy used for spin-up and as the precipitation reference
+  pet: oudin                      # dCREST-CAMELS was calibrated on Oudin PET; 'gridmet' uses ASCE reference ET instead
+  refresh_months: 3               # re-extract the last N months every run (gridMET provisional window)
+
+hydro:
+  parameter_set: data/params/dCREST_CAMELS_v1.0_daymet665.npz
+
+paths:
+  cache_dir: ~/.cache/nwp2sf      # raw downloads (GRIB, gridMET NetCDF, shapefiles); never committed
+  data_dir: data                  # derived basin-scale inputs (committed)
+  results_dir: results            # metrics tables (committed) and simulated discharge (not committed)
+  docs_dir: docs                  # GitHub Pages site

@@ -1,0 +1,55 @@
+name: Daily benchmark update
+
+on:
+  schedule:
+    - cron: "30 13 * * *"     # 13:30 UTC: 00Z ECMWF runs, gridMET (previous day) and USGS daily values are all in
+  workflow_dispatch:
+    inputs:
+      overwrite:
+        description: "Re-extract all NWP inits"
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: benchmark-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet -e .
+      - name: Cache gridMET annual files
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nwp2sf/gridmet
+          key: gridmet-${{ github.run_id }}
+          restore-keys: gridmet-
+      - name: Fetch, run, score, build site
+        env:
+          API_USGS_PAT: ${{ secrets.API_USGS_PAT }}
+        run: |
+          nwp2sf fetch-analysis
+          nwp2sf fetch-obs
+          nwp2sf fetch-nwp --workers 4 ${{ inputs.overwrite && '--overwrite' || '' }}
+          nwp2sf run
+          nwp2sf dashboard
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data results docs
+          git diff --cached --quiet && echo "no changes" || git commit -m "Benchmark update $(date -u +%Y-%m-%d)"
+          git push

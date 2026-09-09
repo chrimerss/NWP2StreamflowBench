@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NWP2StreamflowBench</title>
+<meta name="description" content="How well does NWP precipitation forecast streamflow? ECMWF IFS and AIFS precipitation propagated through the calibrated dCREST model on CAMELS basins, scored against USGS observations (NSE) as a function of lead time and U.S. climate region.">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+  --ref: #898781; --good: #006300;
+  --div-neg: #e34948; --div-mid: #f0efec; --div-pos: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --ref: #898781; --good: #0ca30c; --div-neg: #e66767; --div-mid: #383835; --div-pos: #3987e5;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--s1); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 24px 20px 48px; }
+header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+header .sub { color: var(--ink-2); margin: 0 0 6px; max-width: 900px; }
+header .meta { color: var(--muted); font-size: 13px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 20px 0 8px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.kpi .label { color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.kpi .value { font-size: 30px; font-weight: 600; line-height: 1.15; margin-top: 2px; }
+.kpi .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.kpi .swatch { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin: 18px 0 10px; }
+.filters label { color: var(--ink-2); font-size: 13px; }
+.filters select, .filters input[type=range] { margin-left: 6px; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 4px 8px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 14px 6px; margin: 12px 0; }
+.card h2 { font-size: 16px; margin: 0 0 2px; }
+.card .desc { color: var(--ink-2); font-size: 13px; margin: 0 0 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+th { color: var(--ink-2); font-weight: 500; font-size: 12px; }
+td:first-child, th:first-child { text-align: left; }
+tr.best td { font-weight: 600; }
+.key { display: inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 8px; }
+.tablewrap { overflow-x: auto; }
+details summary { cursor: pointer; color: var(--ink-2); }
+footer { color: var(--ink-2); font-size: 13px; margin-top: 28px; }
+footer h3 { font-size: 14px; color: var(--ink); margin: 16px 0 4px; }
+footer ul { padding-left: 18px; margin: 4px 0; }
+.chart { width: 100%; min-height: 360px; }
+#map { min-height: 520px; }
+.small { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>NWP2StreamflowBench</h1>
+  <p class="sub">Error propagation from NWP precipitation to streamflow. Daily basin-mean precipitation from each forecast model drives the calibrated <a href="https://github.com/Skyan1002/dCREST">dCREST</a> model (dCREST-CAMELS v1.0 parameters) on CAMELS-US catchments from a common analysis-forced state; simulated discharge is scored against USGS daily observations with the Nash–Sutcliffe efficiency (NSE), per lead day and per NOAA climate region.</p>
+  <p class="meta" id="meta">Loading…</p>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="filters">
+  <label>Region <select id="region"></select></label>
+  <label>Metric <select id="metric"><option value="nse">NSE</option><option value="kge">KGE</option></select></label>
+  <label><input type="checkbox" id="iqr" checked> Show interquartile band</label>
+</div>
+
+<div class="card">
+  <h2>Leaderboard</h2>
+  <p class="desc">Median score across basins at selected lead days. <em>Reference</em> is the same model driven by the gridMET analysis instead of a forecast — the ceiling any precipitation forecast can reach. Skill horizon: last lead day whose median score exceeds 0 (better than the observed mean).</p>
+  <div class="tablewrap"><table id="leaderboard"></table></div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Streamflow skill vs lead time</h2>
+    <p class="desc">Median across basins; band = 25th–75th percentile. Dashed grey line: analysis-forced reference.</p>
+    <div id="skill" class="chart"></div>
+  </div>
+  <div class="card">
+    <h2>Precipitation skill vs lead time</h2>
+    <p class="desc">Median Pearson correlation of basin-mean daily forecast precipitation with the gridMET analysis over the same days — the input error that the hydrograph inherits.</p>
+    <div id="pskill" class="chart"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Skill by climate region</h2>
+  <p class="desc">Median streamflow score vs lead day in each of the nine NOAA climate regions (basin counts in panel titles).</p>
+  <div id="regions" class="chart" style="min-height:620px"></div>
+</div>
+
+<div class="card">
+  <h2>Basin map</h2>
+  <p class="desc">Per-basin score for one model and lead day. Diverging scale centred on 0 (clipped to −1 … 1); grey = not scored.</p>
+  <div class="filters">
+    <label>Model <select id="mapmodel"></select></label>
+    <label>Lead day <input type="range" id="maplead" min="1" max="14" value="1" style="vertical-align:middle"> <span id="mapleadv">1</span></label>
+    <label><input type="checkbox" id="mapdelta"> Show loss vs reference (score − reference)</label>
+  </div>
+  <div id="map" class="chart"></div>
+</div>
+
+<div class="card">
+  <details>
+    <summary>Table view: median score by region and lead day</summary>
+    <div class="filters"><label>Model <select id="tabmodel"></select></label></div>
+    <div class="tablewrap"><table id="regiontable"></table></div>
+  </details>
+  <p class="small">Download: <a href="data/metrics_streamflow.csv">streamflow metrics (per basin, lead, model)</a> · <a href="data/metrics_precip.csv">precipitation metrics</a> · <a href="data/metrics_reference.csv">reference run</a> · <a href="data/summary.json">summary.json</a></p>
+</div>
+
+<footer>
+  <h3>Method</h3>
+  <ul>
+    <li><strong>Hydrologic model.</strong> dCREST (differentiable CREST, lumped, daily) with the released dCREST-CAMELS v1.0 parameter set (665 catchments, calibrated on Daymet). Parameters are used as published; nothing is recalibrated.</li>
+    <li><strong>Analysis forcing.</strong> gridMET (4 km) precipitation, Tmin/Tmax and Oudin PET, area-weighted over GAGES-II basin polygons, from 2023-01-01. The analysis-forced run supplies the model state at every initialisation and the <em>reference</em> ceiling.</li>
+    <li><strong>Forecast experiment.</strong> For each 00 UTC initialisation, precipitation on lead days 1…14 is replaced by the model's basin-mean forecast (06–06 UTC accumulation windows, matching the gridMET day); temperature and PET stay at analysis values, so differences isolate precipitation error. Forcing enters the model with a one-day lag to reproduce the Daymet observer-day convention the parameters were calibrated under.</li>
+    <li><strong>Scoring.</strong> For each lead, the forecast discharge valid on each day is collected across initialisations into one time series per basin and scored against USGS daily mean discharge (converted to mm/day over the CAMELS area) with NSE and KGE over a window common to all leads. Basins need at least 60 valid days. Summaries are medians (and quartiles) across basins; regions follow NOAA/NCEI climate regions by gauge state.</li>
+  </ul>
+  <h3>Data &amp; attribution</h3>
+  <ul>
+    <li>ECMWF open data (IFS HRES and AIFS-single, 0.25°) via the <code>ecmwf-opendata</code> client from the AWS mirror — © ECMWF, CC BY 4.0.</li>
+    <li>gridMET (Abatzoglou 2013), Climatology Lab, University of California Merced.</li>
+    <li>USGS Water Data for the Nation, daily discharge (provisional data are subject to revision).</li>
+    <li>GAGES-II basin boundaries (Falcone 2011); CAMELS-US (Newman et al. 2015; Addor et al. 2017).</li>
+    <li>Code and pipeline: <a id="repolink" href="https://github.com/chrimerss/NWP2StreamflowBench">chrimerss/NWP2StreamflowBench</a>.</li>
+  </ul>
+</footer>
+</div>
+
+<script>
+(async function () {
+  const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+  const S = await (await fetch('data/summary.json?v=' + Date.now())).json();
+  const meta = S.meta, leads = meta.leads, models = meta.models, regions = S.regions;
+  const slots = ['--s1','--s2','--s3','--s4','--s5','--s6','--s7','--s8'];
+  const colorOf = i => css(slots[i % slots.length]);
+  const fmt = v => (v === null || v === undefined || Number.isNaN(v)) ? '–' : v.toFixed(2);
+
+  document.getElementById('meta').textContent =
+    `Updated ${meta.generated} · scoring window ${meta.window_start} → ${meta.window_end} (${meta.n_days} days) · ` +
+    `${meta.n_scored} of ${meta.n_basins} CAMELS basins scored · initialisations from ${meta.first_init} to ${meta.last_init} (00 UTC) · ` +
+    models.map(m => `${m.name}: ${meta.n_inits[m.id]} runs`).join(' · ');
+
+  // ---------- helpers ----------
+  const series = (block, mid, region, key) => {
+    const rows = region === 'All' ? block[mid].overall : block[mid].by_region[region];
+    return rows.map(r => ({lead: r.lead, ...r[key]}));
+  };
+  const refVal = (region, key) => region === 'All' ? S.reference.overall[key] : S.reference.by_region[region][key];
+  const hexToRgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`; };
+  const baseLayout = (extra) => ({
+    paper_bgcolor: css('--surface'), plot_bgcolor: css('--surface'),
+    font: {family: 'system-ui, -apple-system, "Segoe UI", sans-serif', color: css('--ink-2'), size: 12},
+    margin: {l: 48, r: 16, t: 10, b: 80}, hovermode: 'x unified',
+    xaxis: {title: 'Lead day', dtick: 1, gridcolor: css('--grid'), zeroline: false, linecolor: css('--axis'), tickfont: {color: css('--muted')}},
+    yaxis: {gridcolor: css('--grid'), zerolinecolor: css('--axis'), linecolor: css('--axis'), tickfont: {color: css('--muted')}},
+    legend: {orientation: 'h', y: -0.28, x: 0, font: {color: css('--ink-2')}},
+    hoverlabel: {bgcolor: css('--surface'), bordercolor: css('--axis'), font: {color: css('--ink')}},
+    ...extra
+  });
+  const cfg = {displayModeBar: false, responsive: true};
+
+  // ---------- controls ----------
+  const regionSel = document.getElementById('region');
+  ['All', ...regions].forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r === 'All' ? 'All basins' : r; regionSel.appendChild(o); });
+  const metricSel = document.getElementById('metric'), iqrBox = document.getElementById('iqr');
+  for (const id of ['mapmodel', 'tabmodel']) {
+    const sel = document.getElementById(id);
+    models.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; sel.appendChild(o); });
+  }
+  const mapLead = document.getElementById('maplead'); mapLead.max = leads[leads.length - 1];
+
+  // ---------- KPIs ----------
+  function kpis() {
+    const key = metricSel.value, region = regionSel.value, box = document.getElementById('kpis');
+    box.replaceChildren();
+    const add = (label, value, note, color) => {
+      const d = document.createElement('div'); d.className = 'kpi';
+      const l = document.createElement('div'); l.className = 'label'; l.textContent = label;
+      const v = document.createElement('div'); v.className = 'value';
+      if (color) { const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = color; v.appendChild(sw); }
+      v.appendChild(document.createTextNode(value));
+      const n = document.createElement('div'); n.className = 'note'; n.textContent = note;
+      d.append(l, v, n); box.appendChild(d);
+    };
+    const r = refVal(region, key);
+    add(`Reference ${key.toUpperCase()} (analysis-forced)`, fmt(r.median), `median of ${r.n} basins · ceiling`);
+    models.forEach((m, i) => {
+      if (!S.streamflow[m.id]) return;
+      const s = series(S.streamflow, m.id, region, key);
+      const d1 = s.find(x => x.lead === 1) || {};
+      const horizon = s.filter(x => x.median !== null && x.median > 0).map(x => x.lead);
+      add(`${m.name} · day 1`, fmt(d1.median), `skill horizon: ${horizon.length ? 'day ' + Math.max(...horizon) : 'none'} (median ${key.toUpperCase()} > 0)`, colorOf(i));
+    });
+  }
+
+  // ---------- leaderboard ----------
+  function leaderboard() {
+    const key = metricSel.value, region = regionSel.value, tb = document.getElementById('leaderboard');
+    const showLeads = [1, 2, 3, 5, 7, 10, 14].filter(l => leads.includes(l));
+    tb.replaceChildren();
+    const thead = tb.createTHead(); const hr = thead.insertRow();
+    ['Model', ...showLeads.map(l => `day ${l}`), 'Skill horizon', 'P corr day 1', 'Basins'].forEach(t => { const th = document.createElement('th'); th.textContent = t; hr.appendChild(th); });
+    const body = tb.createTBody();
+    const rows = models.filter(m => S.streamflow[m.id]).map((m, i) => {
+      const s = series(S.streamflow, m.id, region, key), p = series(S.precip, m.id, region, 'corr');
+      const at = l => (s.find(x => x.lead === l) || {}).median;
+      const horizon = s.filter(x => x.median !== null && x.median > 0).map(x => x.lead);
+      return {m, i, at, horizon: horizon.length ? Math.max(...horizon) : 0, p1: (p.find(x => x.lead === 1) || {}).median, n: (s[0] || {}).n};
+    }).sort((a, b) => (b.at(1) ?? -9) - (a.at(1) ?? -9));
+    rows.forEach((r, k) => {
+      const tr = body.insertRow(); if (k === 0) tr.className = 'best';
+      const c0 = tr.insertCell(); const sw = document.createElement('span'); sw.className = 'key'; sw.style.background = colorOf(r.i); c0.append(sw, document.createTextNode(r.m.name));
+      showLeads.forEach(l => { tr.insertCell().textContent = fmt(r.at(l)); });
+      tr.insertCell().textContent = r.horizon ? `day ${r.horizon}` : '–';
+      tr.insertCell().textContent = fmt(r.p1);
+      tr.insertCell().textContent = r.n ?? '–';
+    });
+    const ref = refVal(region, key), tr = body.insertRow();
+    const c0 = tr.insertCell(); const sw = document.createElement('span'); sw.className = 'key'; sw.style.background = css('--ref'); c0.append(sw, document.createTextNode('Reference (gridMET analysis)'));
+    showLeads.forEach(() => { tr.insertCell().textContent = fmt(ref.median); });
+    tr.insertCell().textContent = '–'; tr.insertCell().textContent = '1.00'; tr.insertCell().textContent = ref.n;
+  }
+
+  // ---------- skill curves ----------
+  function skillChart(divId, block, key, ylabel, withRef) {
+    const region = regionSel.value, traces = [];
+    models.forEach((m, i) => {
+      if (!block[m.id]) return;
+      const s = series(block, m.id, region, key), c = colorOf(i);
+      if (iqrBox.checked) {
+        traces.push({x: s.map(x => x.lead), y: s.map(x => x.q75), mode: 'lines', line: {width: 0}, showlegend: false, hoverinfo: 'skip', name: m.name + ' q75'});
+        traces.push({x: s.map(x => x.lead), y: s.map(x => x.q25), mode: 'lines', line: {width: 0}, fill: 'tonexty', fillcolor: hexToRgba(c, 0.13), showlegend: false, hoverinfo: 'skip', name: m.name + ' q25'});
+      }
+      traces.push({x: s.map(x => x.lead), y: s.map(x => x.median), mode: 'lines+markers', name: m.name, line: {color: c, width: 2}, marker: {size: 8, color: c, line: {color: css('--surface'), width: 2}},
+                   hovertemplate: `<b>%{y:.3f}</b> ${m.name}<extra></extra>`});
+    });
+    if (withRef) {
+      const r = refVal(region, key);
+      traces.push({x: [leads[0], leads[leads.length - 1]], y: [r.median, r.median], mode: 'lines', name: 'Reference (analysis-forced)', line: {color: css('--ref'), width: 2, dash: 'dash'}, hovertemplate: `<b>%{y:.3f}</b> reference<extra></extra>`});
+    }
+    const lo = key === 'corr' ? 0 : -1, hi = 1;
+    Plotly.react(divId, traces, baseLayout({yaxis: {...baseLayout().yaxis, title: ylabel, range: [lo, hi]}}), cfg);
+  }
+
+  // ---------- region small multiples ----------
+  function regionPanels() {
+    const key = metricSel.value, cols = 3, rows = Math.ceil(regions.length / cols), traces = [], layout = baseLayout({
+      grid: {rows, columns: cols, pattern: 'independent', roworder: 'top to bottom', xgap: 0.08, ygap: 0.18},
+      margin: {l: 40, r: 10, t: 24, b: 80}, showlegend: true, annotations: []});
+    regions.forEach((reg, k) => {
+      const ax = k === 0 ? '' : (k + 1), xa = 'x' + ax, ya = 'y' + ax, n = S.reference.by_region[reg][key].n;
+      models.forEach((m, i) => {
+        if (!S.streamflow[m.id]) return;
+        const s = series(S.streamflow, m.id, reg, key);
+        traces.push({x: s.map(x => x.lead), y: s.map(x => x.median), xaxis: xa, yaxis: ya, mode: 'lines', name: m.name, legendgroup: m.id, showlegend: k === 0,
+                     line: {color: colorOf(i), width: 2}, hovertemplate: `<b>%{y:.2f}</b> ${m.name}<extra>${reg}</extra>`});
+      });
+      const r = S.reference.by_region[reg][key].median;
+      traces.push({x: [leads[0], leads[leads.length - 1]], y: [r, r], xaxis: xa, yaxis: ya, mode: 'lines', name: 'Reference', legendgroup: 'ref', showlegend: k === 0, line: {color: css('--ref'), width: 2, dash: 'dash'}, hovertemplate: `<b>%{y:.2f}</b> reference<extra>${reg}</extra>`});
+      layout['xaxis' + ax] = {...baseLayout().xaxis, title: (k >= regions.length - cols) ? 'Lead day' : '', dtick: 2, showticklabels: k >= regions.length - cols};
+      layout['yaxis' + ax] = {...baseLayout().yaxis, range: [-1, 1], dtick: 0.5, title: (k % cols === 0) ? key.toUpperCase() : ''};
+      layout.annotations.push({text: `${reg} (n=${n})`, xref: xa + ' domain', yref: ya + ' domain', x: 0, y: 1.08, showarrow: false, font: {size: 12, color: css('--ink')}, xanchor: 'left'});
+    });
+    layout.legend = {orientation: 'h', y: -0.11, x: 0};
+    Plotly.react('regions', traces, layout, cfg);
+  }
+
+  // ---------- map ----------
+  function mapChart() {
+    const key = metricSel.value, mid = document.getElementById('mapmodel').value, lead = +mapLead.value, delta = document.getElementById('mapdelta').checked;
+    document.getElementById('mapleadv').textContent = lead;
+    const B = S.basins, li = leads.indexOf(lead), vals = B.ids.map((id, i) => {
+      const v = (B[key][mid] || [])[i]?.[li]; if (v === null || v === undefined) return null;
+      return delta ? (B['ref_' + key][i] === null ? null : v - B['ref_' + key][i]) : v;
+    });
+    const clip = v => v === null ? null : Math.max(-1, Math.min(1, v));
+    const neg = css('--div-neg'), mid_ = css('--div-mid'), pos = css('--div-pos');
+    const scale = delta ? [[0, neg], [0.5, mid_], [1, pos]] : [[0, neg], [0.5, mid_], [1, pos]];
+    const traces = [
+      {type: 'scattergeo', lat: B.lat.filter((_, i) => vals[i] === null), lon: B.lon.filter((_, i) => vals[i] === null), mode: 'markers', name: 'not scored',
+       marker: {size: 6, color: css('--axis'), line: {color: css('--surface'), width: 1}}, text: B.ids.filter((_, i) => vals[i] === null).map((id, k) => `${id}`), hovertemplate: '%{text}: not scored<extra></extra>'},
+      {type: 'scattergeo', lat: B.lat.filter((_, i) => vals[i] !== null), lon: B.lon.filter((_, i) => vals[i] !== null), mode: 'markers', name: key.toUpperCase(),
+       marker: {size: 8, color: vals.filter(v => v !== null).map(clip), colorscale: scale, cmin: delta ? -1 : -1, cmax: 1, cmid: 0, showscale: true, line: {color: css('--surface'), width: 1},
+                colorbar: {title: {text: delta ? `Δ${key.toUpperCase()}` : key.toUpperCase(), side: 'right'}, thickness: 12, len: 0.6, tickfont: {color: css('--muted')}, outlinewidth: 0}},
+       customdata: B.ids.map((id, i) => [id, B.name[i], B.region[i], B.area_km2[i], fmt(vals[i]), fmt(B['ref_' + key][i])]).filter((_, i) => vals[i] !== null),
+       hovertemplate: `<b>%{customdata[4]}</b> ${delta ? 'Δ' : ''}${key.toUpperCase()} day ${lead}<br>%{customdata[0]} %{customdata[1]}<br>%{customdata[2]} · %{customdata[3]} km² · reference %{customdata[5]}<extra></extra>`}
+    ];
+    const layout = baseLayout({margin: {l: 0, r: 0, t: 0, b: 0}, hovermode: 'closest', showlegend: false,
+      geo: {scope: 'usa', projection: {type: 'albers usa'}, bgcolor: css('--surface'), landcolor: css('--page'), lakecolor: css('--surface'), subunitcolor: css('--grid'), countrycolor: css('--axis'), showlakes: true}});
+    Plotly.react('map', traces, layout, cfg);
+  }
+
+  // ---------- table ----------
+  function regionTable() {
+    const key = metricSel.value, mid = document.getElementById('tabmodel').value, tb = document.getElementById('regiontable');
+    tb.replaceChildren();
+    const hr = tb.createTHead().insertRow(); ['Region', 'n', 'Reference', ...leads.map(l => `d${l}`)].forEach(t => { const th = document.createElement('th'); th.textContent = t; hr.appendChild(th); });
+    const body = tb.createTBody();
+    ['All', ...regions].forEach(reg => {
+      const tr = body.insertRow(), s = series(S.streamflow, mid, reg, key), r = refVal(reg, key);
+      tr.insertCell().textContent = reg === 'All' ? 'All basins' : reg; tr.insertCell().textContent = r.n; tr.insertCell().textContent = fmt(r.median);
+      leads.forEach(l => { tr.insertCell().textContent = fmt((s.find(x => x.lead === l) || {}).median); });
+    });
+  }
+
+  function renderAll() {
+    kpis(); leaderboard();
+    skillChart('skill', S.streamflow, metricSel.value, `Median ${metricSel.value.toUpperCase()} (streamflow)`, true);
+    skillChart('pskill', S.precip, 'corr', 'Median correlation (precipitation)', false);
+    regionPanels(); mapChart(); regionTable();
+  }
+  ['region', 'metric', 'iqr', 'mapmodel', 'maplead', 'mapdelta', 'tabmodel'].forEach(id => document.getElementById(id).addEventListener('input', renderAll));
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+  renderAll();
+})().catch(e => { document.getElementById('meta').textContent = 'Failed to load data: ' + e; });
+</script>
+</body>
+</html>
