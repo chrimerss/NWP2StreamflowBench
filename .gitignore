@@ -12,3 +12,4 @@ cache/
 results/discharge/
 *.grib2
 *.part
+.claude/
