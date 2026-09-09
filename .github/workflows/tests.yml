@@ -12,5 +12,5 @@ jobs:
           python-version: "3.12"
       - run: |
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet -e ".[test]"
+          pip install --quiet -e ".[test,basins]"
       - run: pytest -q
