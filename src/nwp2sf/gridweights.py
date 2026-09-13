@@ -17,10 +17,11 @@ from scipy import sparse
 
 
 def _step(x: np.ndarray) -> float:
-    d = np.diff(x)
-    if not np.allclose(d, d[0], rtol=1e-4, atol=1e-6):
+    d = np.diff(np.asarray(x, dtype=np.float64))
+    step = float(np.median(d))
+    if not np.allclose(d, step, rtol=1e-3, atol=1e-4):   # float32 axes (e.g. 0.1 deg) carry ~1e-5 jitter
         raise ValueError("grid axis is not regular")
-    return float(d[0])
+    return step
 
 
 def coverage_weights(geoms: Iterable, lat: np.ndarray, lon: np.ndarray) -> sparse.csr_matrix:

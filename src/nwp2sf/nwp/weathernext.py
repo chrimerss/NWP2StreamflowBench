@@ -22,6 +22,11 @@ through ``GOOGLE_APPLICATION_CREDENTIALS``. Set ``GOOGLE_CLOUD_PROJECT`` for the
 requester-pays ensemble bucket. Without credentials the source reports no
 available initialisations and the rest of the benchmark proceeds.
 
+Volume: every hourly field is one whole-globe chunk of ~23 MB (zstd barely
+compresses float32 rain), so a 14-day 00 UTC cycle costs ~7.9 GB of reads
+regardless of the CONUS subset; the 2026 backfill is ~2 TB and a daily update
+~8 GB. Reads are free on the statistics bucket.
+
 The basin/grid weights for the 0.1° grid are built on first use from the
 store's own coordinates (needs the ``basins`` extra and the GAGES-II cache) and
 then committed like the other weight files.
@@ -54,8 +59,9 @@ class WeatherNext3(PrecipForecastSource):
 
     def __init__(self, *args, variable: str = "imerg_tp_1hr", store: str = "statistics", stat: str = "mean",
                  member: Optional[int] = None, root: Optional[str] = None, year_dir: str = "2026_to_present",
-                 project: Optional[str] = None, **kw):
+                 project: Optional[str] = None, concurrency: int = 16, **kw):
         super().__init__(*args, **kw)
+        self.concurrency = int(concurrency)
         self.variable = variable
         self.store_kind = store
         self.stat = stat
@@ -76,8 +82,11 @@ class WeatherNext3(PrecipForecastSource):
             import fsspec
             if self.root.startswith("gs://"):
                 import gcsfs
-                self._fs = gcsfs.GCSFileSystem(token="google_default", project=self.project,
-                                               requester_pays=bool(self.project) and self.store_kind == "ensemble")
+                kw = {"token": "google_default"}
+                if self.project:
+                    kw["project"] = self.project
+                    kw["requester_pays"] = self.store_kind == "ensemble"
+                self._fs = gcsfs.GCSFileSystem(**kw)
             else:
                 self._fs = fsspec.filesystem(fsspec.core.split_protocol(self.root)[0] or "file")
         return self._fs
@@ -143,6 +152,8 @@ class WeatherNext3(PrecipForecastSource):
             log.warning("WeatherNext 3 %s: no store found", init)
             return None
         try:
+            import zarr
+            zarr.config.set({"async.concurrency": self.concurrency})   # hourly chunks are whole-globe (~23 MB each)
             mapper = self.fs.get_mapper(path)
             ds = xr.open_zarr(mapper, consolidated=None, chunks=None)
         except Exception as e:
@@ -157,8 +168,8 @@ class WeatherNext3(PrecipForecastSource):
             lat_name = next(d for d in da.dims if d.startswith("lat"))
             lon_name = next(d for d in da.dims if d.startswith("lon"))
             hours = self._lead_hours(da[lead_dim].values)
-            lat = da[lat_name].values.astype(float)
-            lon_raw = da[lon_name].values.astype(float)
+            lat = np.round(da[lat_name].values.astype(np.float64), 4)      # float32 axes -> exact 0.1 deg
+            lon_raw = np.round(da[lon_name].values.astype(np.float64), 4)
             lon = (lon_raw + 180.0) % 360.0 - 180.0
             # CONUS window of the basin set, in the store's own longitude convention
             from ..basins import load_basins

@@ -98,9 +98,11 @@ Access is allowlisted per Google account, so two one-off steps are needed:
    GitHub Action. Set `GOOGLE_CLOUD_PROJECT` if you use the requester-pays
    ensemble bucket.
 
-Then `nwp2sf fetch-nwp --model wn3` backfills every 00 UTC cycle since
-2026-01-01 (the first fetch also builds `data/basins/weights_wn3_0p1.npz` from
-the store's grid; commit it). Until credentials are present the source reports
+Then `nwp2sf fetch-nwp --model wn3 --workers 2` backfills every 00 UTC cycle
+since 2026-01-01. Budget bandwidth, not storage: each hourly field is a single
+whole-globe chunk (~23 MB), so one 14-day cycle reads ~8 GB and the 2026
+backfill ~2 TB (about six hours at 100 MB/s; only ~30 kB per cycle is kept).
+Reads from the statistics bucket are free. Until credentials are present the source reports
 no initialisations and the rest of the benchmark runs unchanged.
 
 ## Adding a model
