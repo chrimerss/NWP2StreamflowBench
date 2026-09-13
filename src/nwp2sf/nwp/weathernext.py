@@ -130,7 +130,7 @@ class WeatherNext3(PrecipForecastSource):
         if path.exists():
             W, wlat, wlon, wids = load_weights(path)
             try:
-                check_grid(wlat, wlon, lat, lon)
+                check_grid(wlat, wlon, lat, np.sort(lon))   # weights are stored on the sorted -180..180 axis
             except ValueError:
                 log.warning("%s does not match the store grid; rebuilding", path.name)
                 W = None
