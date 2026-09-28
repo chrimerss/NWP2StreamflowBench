@@ -31,23 +31,40 @@ VARS = {"pr": "precipitation_amount", "tmmn": "air_temperature", "tmmx": "air_te
 GRID = "gridmet"
 
 
-def gridmet_file(cache_dir: Path, var: str, year: int, refresh: bool = False) -> Path:
+class GridmetUnavailable(RuntimeError):
+    """gridMET could not be downloaded and no cached copy exists."""
+
+
+def gridmet_file(cache_dir: Path, var: str, year: int, refresh: bool = False, retries: int = 5) -> Path:
     """Local copy of one gridMET annual file (downloaded if missing or ``refresh``)."""
     import requests
     p = Path(cache_dir) / "gridmet" / f"{var}_{year}.nc"
     p.parent.mkdir(parents=True, exist_ok=True)
     if p.exists() and not refresh:
         return p
+    import time
     url = GRIDMET_URL.format(var=var, year=year)
-    log.info("downloading %s", url)
-    with requests.get(url, stream=True, timeout=1800) as r:
-        r.raise_for_status()
-        tmp = p.with_suffix(".part")
-        with open(tmp, "wb") as fh:
-            for chunk in r.iter_content(1 << 22):
-                fh.write(chunk)
-        tmp.replace(p)
-    return p
+    last = None
+    for attempt in range(retries):
+        try:
+            log.info("downloading %s", url)
+            with requests.get(url, stream=True, timeout=(30, 1800)) as r:
+                r.raise_for_status()
+                tmp = p.with_suffix(".part")
+                with open(tmp, "wb") as fh:
+                    for chunk in r.iter_content(1 << 22):
+                        fh.write(chunk)
+                tmp.replace(p)
+            return p
+        except (requests.RequestException, OSError) as e:   # the gridMET server refuses connections at times
+            last = e
+            wait = 60 * (attempt + 1)
+            log.warning("gridMET download failed (%s); retry %d/%d in %ds", type(e).__name__, attempt + 1, retries, wait)
+            time.sleep(wait)
+    if p.exists():
+        log.warning("gridMET unreachable; using the cached %s", p.name)
+        return p
+    raise GridmetUnavailable(f"{url}: {last}")
 
 
 def gridmet_axes(cache_dir: Path, year: Optional[int] = None):
@@ -111,7 +128,12 @@ def update(data_dir: Path, cache_dir: Path, basin_ids: List[str], basin_lat: np.
             todo.setdefault(per.year, []).append(per.month)
     for year, ms in sorted(todo.items()):
         log.info("gridMET %d months %s", year, ms)
-        res = _extract_year(cache_dir, W, wlat, wlon, year, ms, refresh_file=(year >= refresh_from.year))
+        try:
+            res = _extract_year(cache_dir, W, wlat, wlon, year, ms, refresh_file=(year >= refresh_from.year))
+        except GridmetUnavailable as e:
+            # keep the benchmark running on the forcing already stored; the tail is refreshed next run
+            log.warning("gridMET update skipped for %d: %s", year, e)
+            continue
         for m, (days, cols) in res.items():
             tmean = 0.5 * (cols["tmmn"] + cols["tmmx"]) - 273.15
             pet_oudin = oudin_pet(tmean, days.dayofyear.values, np.asarray(basin_lat, dtype=float))
