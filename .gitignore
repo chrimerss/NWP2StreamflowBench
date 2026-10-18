@@ -16,3 +16,4 @@ results/discharge/
 # local secrets (ANTHROPIC_API_KEY)
 .env
 results/hydroagent/offline/
+.CLAUDE_API

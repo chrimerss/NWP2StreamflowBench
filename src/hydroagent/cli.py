@@ -9,8 +9,8 @@
     hydroagent run ... --offline           scripted executor and editor: end-to-end pipeline test, no API calls
 
 Models use OpenCode's provider/model ids, e.g. anthropic/claude-sonnet-5-5. The
-Anthropic key is read from ANTHROPIC_API_KEY (or from a `.env` file in the repository
-root, which is git-ignored).
+Anthropic key is read from ANTHROPIC_API_KEY, else from `.CLAUDE_API` (raw key) or `.env`
+in the repository root; both files are git-ignored.
 """
 from __future__ import annotations
 
@@ -27,6 +27,12 @@ from . import config
 
 
 def _load_env_file() -> None:
+    k = config.REPO / ".CLAUDE_API"        # raw key file (git-ignored), if present
+    if k.is_file() and not os.environ.get("ANTHROPIC_API_KEY"):
+        lines = [x.strip() for x in k.read_text().splitlines() if x.strip() and not x.strip().startswith("#")]
+        if lines:
+            v = lines[0].partition("=")[2] if "=" in lines[0] else lines[0]
+            os.environ["ANTHROPIC_API_KEY"] = v.strip().strip("'\"")
     f = config.REPO / ".env"
     if f.is_file():
         for line in f.read_text().splitlines():
