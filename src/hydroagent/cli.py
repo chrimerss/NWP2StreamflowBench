@@ -61,8 +61,36 @@ def cmd_setup(a) -> int:
     install.patch("opencode")
     install.run(["npm", "install", "--prefix", h2c.DEPENDENCIES / "tools", "bun@1.3.11"])
     install.run([h2c.BUN, "install", "--frozen-lockfile", "--ignore-scripts"], cwd=h2c.OPENCODE_DIR)
+    _patch_opencode_adaptive(h2c.OPENCODE_DIR)
     print(f"OpenCode ready under {h2c.OPENCODE_DIR}")
     return 0
+
+
+ADAPTIVE_MARK = "// hydroagent: Claude 5.x families use adaptive thinking + effort"
+
+
+def _patch_opencode_adaptive(opencode_dir) -> bool:
+    """The pinned OpenCode (v1.14.18) maps effort variants of Claude models newer than Opus 4.8
+    to the legacy `thinking: {type: "enabled", budget_tokens}` request, which Claude 5.x models
+    reject with a 400. Teach its variant table the 5.x families (idempotent)."""
+    f = opencode_dir / "packages" / "opencode" / "src" / "provider" / "transform.ts"
+    s = f.read_text()
+    if ADAPTIVE_MARK in s:
+        return False
+    # insert just before the function's final `return null`, outside the context of
+    # harness2's own opencode-compat.diff (which edits the top of the same function)
+    head = "function anthropicAdaptiveEfforts(apiId: string): string[] | null {"
+    i = s.index(head)
+    anchor = "  return null\n}\n"
+    j = s.index(anchor, i)
+    add = (f"  {ADAPTIVE_MARK}\n"
+           '  if (["opus-5", "sonnet-5", "fable-5", "mythos-5", "haiku-5"].some((v) => apiId.includes(v))) {\n'
+           '    return ["low", "medium", "high", "xhigh", "max"]\n'
+           "  }\n")
+    s = s[:j] + add + s[j:]
+    f.write_text(s)
+    print(f"patched {f} (Claude 5.x adaptive effort)")
+    return True
 
 
 def cmd_prepare(a) -> int:
@@ -144,7 +172,20 @@ def cmd_run(a) -> int:
     res["wall_s"] = round(time.time() - t0)
     (config.RUNS / "last_run.json").write_text(json.dumps(res, indent=1, default=str))
     print(json.dumps({k: res[k] for k in ("done", "failed", "wall_s") if k in res}))
-    return int(res.get("failed", 0) > 0)
+    fell = _fallbacks()
+    if fell:
+        print("WARNING: these Harness2 stages fell back to the base harness (improver failed): "
+              + ", ".join(fell) + ". Their rollouts are base-harness replicates; see runs/_audit/*.meta.json")
+    return int(res.get("failed", 0) > 0 or bool(fell))
+
+
+def _fallbacks() -> list:
+    out = []
+    for s in (config.RUNS / "adapt").rglob("summary.json"):
+        js = json.loads(s.read_text())
+        for mode, rec in (js.get("modes") or {}).items():
+            out += [f"{js['task_id']}:{mode}:{st['label']}" for st in rec.get("stages", []) if st.get("fell_back")]
+    return out
 
 
 def cmd_evaluate(a) -> int:
@@ -180,6 +221,11 @@ def cmd_evaluate(a) -> int:
                 per += [dict(b, task=tid, run_id=meta["run_id"], role=row["role"]) for b in got["per_basin"]]
             rows.append(row)
     df = pd.DataFrame(rows)
+    fell = _fallbacks()
+    if fell:
+        df["note"] = ["base-harness replicate (improver fell back)" if any(f.endswith(":" + r["label"]) for f in fell)
+                      else "" for r in rows]
+        print("WARNING: stages that fell back to the base harness:", ", ".join(fell))
     out = config.RESULTS / ("offline" if a.offline else "")
     out.mkdir(parents=True, exist_ok=True)
     df.to_csv(out / "agent_rollouts.csv", index=False, float_format="%.4f")
