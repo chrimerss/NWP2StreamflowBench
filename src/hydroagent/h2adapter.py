@@ -53,7 +53,9 @@ def configure(executor: str | None = None, improver: str | None = None) -> None:
 def patch_claude() -> None:
     from harness2.core import proposer as P
 
-    P._DROP_ENV = tuple(k for k in P._DROP_ENV if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"))
+    # keep the key; still drop ANTHROPIC_BASE_URL/AUTH_TOKEN, which a parent Claude Code session
+    # may export (OpenCode treats the base URL as including /v1 and would call /messages)
+    P._DROP_ENV = tuple(k for k in P._DROP_ENV if k != "ANTHROPIC_API_KEY")
     if getattr(P.Proposer.env, "_hydroagent", False):
         return
     upstream = P.Proposer.env
@@ -212,7 +214,9 @@ class HydroAdapter:
         perm = {"external_directory": {"*": "deny", str(ws): "allow", f"{ws}/**": "allow"},
                 "webfetch": "deny", "websearch": "deny", "codesearch": "deny"}
         venv_bin = str(Path(sys.executable).parent)
-        env = {**os.environ,
+        inherited = {k: v for k, v in os.environ.items()
+                     if k not in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")}
+        env = {**inherited,
                "PATH": f"{venv_bin}:{os.environ.get('PATH', '')}",
                "PYTHONPATH": str(ws), "HYDRO_WORKSPACE": str(ws),
                "OPENCODE_PERMISSION": json.dumps(perm),
