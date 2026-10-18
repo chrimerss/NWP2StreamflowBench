@@ -38,8 +38,9 @@ PROMPT = (
     "Stay inside {ws}."
 )
 NETWORK_PATTERNS = re.compile(
-    r"waterservices\.usgs|waterdata\.usgs|nwis|api\.waterdata|dataretrieval|ncar\.ucar|gdex|"
-    r"zenodo|camels|hydroshare|ornl\.gov|curl |wget |requests\.get|urllib\.request|urlopen",
+    r"waterservices\.usgs|waterdata\.usgs|api\.waterdata|nwis\.|dataretrieval|ucar\.edu|gdex|zenodo\.org|"
+    r"hydroshare|ornl\.gov|sciencebase|\bcurl\b|\bwget\b|requests\.(get|post)|urllib\.request|urlopen|"
+    r"http\.client|socket\.create_connection|pip install|uv pip",
     re.IGNORECASE)
 
 
@@ -257,10 +258,25 @@ class HydroAdapter:
         return p.returncode
 
     def _audit(self, out: Path) -> dict:
+        """Look for network access in what the agent *ran* (tool inputs), not in prose it wrote."""
         ev = out / "events.jsonl"
-        text = ev.read_text(errors="replace") if ev.is_file() else ""
-        hits = sorted({m.group(0).lower() for m in NETWORK_PATTERNS.finditer(text)})
-        return {"network_pattern_hits": hits, "flagged": bool(hits)}
+        hits = set()
+        if ev.is_file():
+            for line in ev.read_text(errors="replace").splitlines():
+                if not line.startswith("{"):
+                    continue
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if e.get("type") != "tool_use":
+                    continue
+                inp = (e.get("part") or {}).get("state", {}).get("input", {})
+                text = inp.get("command", "") if isinstance(inp, dict) else ""
+                text += " " + (inp.get("url", "") if isinstance(inp, dict) else "")
+                for m in NETWORK_PATTERNS.finditer(text):
+                    hits.add(m.group(0).lower())
+        return {"network_pattern_hits": sorted(hits), "flagged": bool(hits)}
 
     # ------------------------------------------------------------------ artifacts
     def _targets(self, task_id: str) -> list[str]:

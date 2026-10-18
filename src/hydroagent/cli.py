@@ -173,7 +173,7 @@ def cmd_evaluate(a) -> int:
                                                                     if meta["run_id"] in chosen else "probe"),
                    "executor": meta.get("executor"), "delivered": got is not None,
                    "model_structure_changed": meta.get("model_structure_changed"),
-                   "network_flagged": (meta.get("audit") or {}).get("flagged")}
+                   "network_flagged": adapter._audit(rj.parent).get("flagged")}
             if got:
                 row.update(nse_median=got["nse_median"], kge_median=got["kge_median"],
                            beats_knn_attr=f"{got['n_passed']}/{got['n_criteria']}")
