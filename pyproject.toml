@@ -22,7 +22,7 @@ dependencies = [
   "pyyaml>=6",
   "tqdm>=4",
   "torch>=2.0",
-  "dcrest @ git+https://github.com/Skyan1002/dCREST.git",
+  # dcrest is vendored under src/dcrest (upstream repository no longer available)
 ]
 
 [project.optional-dependencies]
