@@ -13,3 +13,6 @@ results/discharge/
 *.grib2
 *.part
 .claude/
+# local secrets (ANTHROPIC_API_KEY)
+.env
+results/hydroagent/offline/

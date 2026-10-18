@@ -31,12 +31,18 @@ basins = ["geopandas>=0.14", "shapely>=2.0", "pyproj>=3.5"]
 # WeatherNext 3 on Google Cloud Storage (Zarr v3)
 weathernext = ["zarr>=3", "gcsfs>=2024.6", "google-auth>=2"]
 test = ["pytest>=7"]
+# LLM hydrologic-modelling agent refined with Harness2 (google-research/harness2, pinned commit)
+agent = ["harness2 @ git+https://github.com/google-research/harness2.git@1cfe254"]
 
 [project.scripts]
 nwp2sf = "nwp2sf.cli:main"
+hydroagent = "hydroagent.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+hydroagent = ["harness_base/*.md", "harness_base/**/*.md", "harness_base/**/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

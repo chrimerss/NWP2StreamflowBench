@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NWP2StreamflowBench · Ungauged-basin agent</title>
+<meta name="description" content="A Claude-backed hydrologic-modelling agent, refined with Google's Harness², calibrates dCREST on gauged CAMELS basins and predicts discharge in virtual ungauged basins; compared with classical regionalization.">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s7: #4a3aa7; --ref: #898781;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s7: #9085e9; --ref: #898781;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--s1); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 24px 20px 48px; }
+header nav { display: flex; gap: 16px; font-size: 13px; margin: 0 0 10px; }
+header nav a { color: var(--ink-2); text-decoration: none; padding-bottom: 2px; }
+header nav a.on { color: var(--ink); border-bottom: 2px solid var(--s1); font-weight: 600; }
+header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+header .sub { color: var(--ink-2); margin: 0 0 6px; max-width: 920px; }
+header .meta { color: var(--muted); font-size: 13px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 20px 0 8px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.kpi .label { color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.kpi .value { font-size: 30px; font-weight: 600; line-height: 1.15; margin-top: 2px; }
+.kpi .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.swatch { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 14px 8px; margin: 12px 0; }
+.card h2 { font-size: 16px; margin: 0 0 2px; }
+.card .desc { color: var(--ink-2); font-size: 13px; margin: 0 0 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 1000px) { .grid2 { grid-template-columns: 1fr; } }
+.chart { width: 100%; min-height: 340px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 500; font-size: 12px; }
+td:first-child, th:first-child { text-align: left; }
+.tablewrap { overflow-x: auto; }
+.pending { color: var(--muted); font-style: italic; }
+footer { color: var(--ink-2); font-size: 13px; margin-top: 24px; }
+footer h3 { font-size: 14px; color: var(--ink); margin: 16px 0 4px; }
+footer ul { padding-left: 18px; margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <nav><a href="index.html">Forecast leaderboard</a><a class="on" href="agent.html">Ungauged-basin agent</a></nav>
+  <h1>Ungauged-basin agent</h1>
+  <p class="sub">A Claude-backed hydrologic-modelling agent calibrates the dCREST model on gauged CAMELS-US donor basins and predicts daily discharge in held-out, anonymised "virtual ungauged" basins. Google's Harness² refines the agent's own harness (prompts, skills, scripts) between attempts. Everything is scored on the 1989–1999 benchmark test period with USGS observations the agent never sees, and compared with classical regionalization of the released dCREST-CAMELS parameters.</p>
+  <p class="meta" id="meta">Loading…</p>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Median test NSE by method</h2>
+    <p class="desc">Dot = median across basins; bar = 25th–75th percentile. Left: all 665 basins, 5-fold spatial cross-validation. Right: the 30-target pilot task the agent runs on.</p>
+    <div id="dots" class="chart"></div>
+  </div>
+  <div class="card">
+    <h2>Distribution of test NSE</h2>
+    <p class="desc">Cumulative share of basins below each NSE (pilot targets; values clipped at −1). Curves further right are better.</p>
+    <div id="ecdf" class="chart"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Leaderboard (pilot task)</h2>
+  <p class="desc">Median test NSE / KGE over the pilot targets. The agent must beat the best classical regionalization (attribute similarity) to count as an improvement; the gauged upper bound uses each target's own calibration and is not reachable without data.</p>
+  <div class="tablewrap"><table id="board"></table></div>
+</div>
+
+<div class="card">
+  <h2>Classical baselines by climate region (all 665 basins)</h2>
+  <p class="desc">Median test NSE per NOAA climate region, 5-fold spatial cross-validation.</p>
+  <div class="tablewrap"><table id="regions"></table></div>
+</div>
+
+<div class="card" id="rollcard">
+  <h2>Agent rollouts</h2>
+  <p class="desc">Every executor rollout of the Harness² run: the base harness, the probe candidates, and the composed harness selected without seeing any score.</p>
+  <div class="tablewrap"><table id="rollouts"></table></div>
+</div>
+
+<footer>
+  <h3>Protocol</h3>
+  <ul>
+    <li><strong>Data.</strong> CAMELS-US v1.2 Daymet basin-mean forcing and USGS discharge (Newman et al. 2015; Addor et al. 2017), Oudin PET. The rebuilt record reproduces the released dCREST-CAMELS test NSE (median 0.662) exactly.</li>
+    <li><strong>Folds.</strong> 665 basins in 5 region-stratified random folds; each fold is held out once as ungauged and the other 532 basins are donors. The pilot uses 30 region-stratified targets of fold 1.</li>
+    <li><strong>What the agent sees.</strong> Donor forcing for 1980–2014, donor discharge only for 1999-10 to 2008-09, released donor parameters, static attributes with anonymous IDs and coordinates rounded to 0.1°. Targets: forcing and attributes only. Web tools are disabled and every rollout is audited for data downloads.</li>
+    <li><strong>Scoring.</strong> Daily NSE and KGE per target over 1989-10-01 to 1999-09-30, after the 3-year spin-up the released parameters were calibrated with.</li>
+    <li><strong>Agent.</strong> OpenCode executor and Harness² improver, both on Claude through a direct Anthropic API key (Harness² patched to keep the key; it otherwise routes Claude through Vertex AI).</li>
+  </ul>
+  <h3>Sources</h3>
+  <ul>
+    <li><a href="https://github.com/google-research/harness2">google-research/harness2</a> (Xu et al. 2026, arXiv:2610.14224), pinned at commit 1cfe254.</li>
+    <li>CAMELS v1.2, <a href="https://zenodo.org/records/15529996">Zenodo 15529996</a>, CC BY 4.0. dCREST 1.0.0 and dCREST-CAMELS v1.0 parameters (HyDROS Lab, MIT), vendored in <code>src/dcrest</code>.</li>
+  </ul>
+</footer>
+</div>
+
+<script>
+(async function () {
+  const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+  const S = await (await fetch('data/hydroagent.json?v=' + Date.now())).json();
+  const fmt = v => (v === null || v === undefined || Number.isNaN(v)) ? '–' : Number(v).toFixed(3);
+  const name = Object.fromEntries(S.methods.map(m => [m.id, m.name]));
+  const color = {agent_h2: '--s1', agent_base: '--s2', knn_attr: '--s3', knn_spatial: '--s4', nn_spatial: '--s5', global_median: '--s7', gauged_upper: '--ref'};
+  const order = ['gauged_upper', 'agent_h2', 'agent_base', 'knn_attr', 'knn_spatial', 'nn_spatial', 'global_median'];
+  const m = S.meta;
+  document.getElementById('meta').textContent =
+    `Updated ${m.generated} · test ${m.test[0]} → ${m.test[1]} · donor observations ${m.train[0]} → ${m.train[1]} · ` +
+    `${m.n_basins} basins in ${m.folds} folds · pilot ${m.pilot_task} (${m.n_pilot} targets)` + (m.executor ? ` · executor ${m.executor}` : ' · agent run pending');
+
+  // KPIs
+  const kp = document.getElementById('kpis');
+  const tile = (label, v, note, c) => {
+    const d = document.createElement('div'); d.className = 'kpi';
+    const l = document.createElement('div'); l.className = 'label'; l.textContent = label;
+    const val = document.createElement('div'); val.className = 'value';
+    if (c) { const s = document.createElement('span'); s.className = 'swatch'; s.style.background = css(c); val.appendChild(s); }
+    val.appendChild(document.createTextNode(v));
+    const n = document.createElement('div'); n.className = 'note'; n.textContent = note;
+    d.append(l, val, n); kp.appendChild(d);
+  };
+  const P = S.pilot;
+  tile('Gauged upper bound', fmt(P.gauged_upper?.nse_median), 'pilot median NSE, own calibration', '--ref');
+  tile('Best classical', fmt(P.knn_attr?.nse_median), 'attribute similarity, 5 donors', '--s3');
+  tile('Agent, base harness', P.agent_base ? fmt(P.agent_base.nse_median) : '–', P.agent_base ? 'pilot median NSE' : 'awaiting first run', P.agent_base ? '--s2' : null);
+  tile('Agent + Harness²', P.agent_h2 ? fmt(P.agent_h2.nse_median) : '–', P.agent_h2 ? 'selected harness, pilot median NSE' : 'awaiting first run', P.agent_h2 ? '--s1' : null);
+
+  const layout = extra => ({
+    paper_bgcolor: css('--surface'), plot_bgcolor: css('--surface'),
+    font: {family: 'system-ui, -apple-system, "Segoe UI", sans-serif', color: css('--ink-2'), size: 12},
+    margin: {l: 240, r: 16, t: 26, b: 44}, showlegend: false,
+    hoverlabel: {bgcolor: css('--surface'), bordercolor: css('--axis'), font: {color: css('--ink')}}, ...extra});
+  const cfg = {displayModeBar: false, responsive: true};
+
+  // dot plot, two panels
+  const traces = [];
+  [['all', 'x', '5-fold CV, 665 basins'], ['pilot', 'x2', `Pilot, ${m.n_pilot} targets`]].forEach(([key, xa]) => {
+    order.forEach(id => {
+      const s = S[key][id]; if (!s || !s.n) return;
+      const c = css(color[id]);
+      traces.push({x: [s.q25, s.q75], y: [name[id], name[id]], xaxis: xa, mode: 'lines', line: {color: c, width: 3}, hoverinfo: 'skip'});
+      traces.push({x: [s.nse_median], y: [name[id]], xaxis: xa, mode: 'markers', marker: {size: 11, color: c, line: {color: css('--surface'), width: 2}},
+                   hovertemplate: `<b>%{x:.3f}</b> median NSE<br>${name[id]}<br>IQR ${fmt(s.q25)}–${fmt(s.q75)} · n=${s.n}<extra></extra>`});
+    });
+  });
+  const ax = {range: [0, 0.9], gridcolor: css('--grid'), zeroline: false, linecolor: css('--axis'), tickfont: {color: css('--muted')}, title: 'NSE'};
+  Plotly.react('dots', traces, layout({grid: {rows: 1, columns: 2, xgap: 0.08}, xaxis: {...ax, domain: [0, 0.47]}, xaxis2: {...ax, domain: [0.53, 1]},
+    yaxis: {categoryorder: 'array', categoryarray: order.map(i => name[i]).reverse(), tickfont: {color: css('--ink-2')}, gridcolor: css('--grid')},
+    annotations: [{text: '5-fold CV, 665 basins', xref: 'x domain', yref: 'paper', x: 0, y: 1.06, showarrow: false, xanchor: 'left', font: {color: css('--ink'), size: 12}},
+                  {text: `Pilot, ${m.n_pilot} targets`, xref: 'x2 domain', yref: 'paper', x: 0, y: 1.06, showarrow: false, xanchor: 'left', font: {color: css('--ink'), size: 12}}]}), cfg);
+
+  // ECDF (pilot)
+  const et = order.filter(id => P[id]?.ecdf).map(id => {
+    const v = P[id].ecdf, n = v.length;
+    return {x: v, y: v.map((_, i) => (i + 1) / n), mode: 'lines', name: name[id], line: {shape: 'hv', width: 2, color: css(color[id]), dash: id === 'gauged_upper' ? 'dash' : 'solid'},
+            hovertemplate: `${name[id]}: %{y:.0%} of basins below NSE %{x:.2f}<extra></extra>`};
+  });
+  Plotly.react('ecdf', et, layout({margin: {l: 52, r: 16, t: 10, b: 130}, showlegend: true, legend: {orientation: 'h', y: -0.38, x: 0},
+    xaxis: {range: [-1, 1], title: 'Test NSE', gridcolor: css('--grid'), zeroline: false, tickfont: {color: css('--muted')}},
+    yaxis: {range: [0, 1], tickformat: '.0%', title: 'Share of basins', gridcolor: css('--grid'), tickfont: {color: css('--muted')}}, hovermode: 'closest'}), cfg);
+
+  // leaderboard
+  const board = document.getElementById('board');
+  const hr = board.createTHead().insertRow();
+  ['Method', 'Median NSE', 'Median KGE', 'NSE IQR', 'Share NSE > 0', 'Basins'].forEach(t => { const th = document.createElement('th'); th.textContent = t; hr.appendChild(th); });
+  const tb = board.createTBody();
+  order.forEach(id => {
+    const s = P[id], tr = tb.insertRow();
+    const c0 = tr.insertCell(); const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = css(color[id]); c0.append(sw, document.createTextNode(name[id]));
+    if (!s) { const c = tr.insertCell(); c.colSpan = 5; c.className = 'pending'; c.style.textAlign = 'left'; c.textContent = 'awaiting first agent run'; return; }
+    [fmt(s.nse_median), fmt(s.kge_median), `${fmt(s.q25)} – ${fmt(s.q75)}`, `${Math.round(100 * s.frac_gt0)}%`, s.n].forEach(v => { tr.insertCell().textContent = v; });
+  });
+
+  // regions
+  const rt = document.getElementById('regions'), base = ['gauged_upper', 'knn_attr', 'knn_spatial', 'nn_spatial', 'global_median'];
+  const rh = rt.createTHead().insertRow();
+  ['Region', 'n', ...base.map(i => name[i])].forEach(t => { const th = document.createElement('th'); th.textContent = t; rh.appendChild(th); });
+  const rb = rt.createTBody();
+  Object.entries(S.by_region).forEach(([reg, r]) => {
+    const tr = rb.insertRow(); tr.insertCell().textContent = reg; tr.insertCell().textContent = r.n;
+    base.forEach(i => { tr.insertCell().textContent = fmt(r[i]); });
+  });
+
+  // rollouts
+  const ro = document.getElementById('rollouts');
+  if (!S.rollouts.length) { document.getElementById('rollcard').querySelector('.desc').textContent = 'No model-backed run yet. The pipeline has been verified end to end with scripted stand-ins for both model roles.'; }
+  else {
+    const cols = ['label', 'role', 'executor', 'delivered', 'nse_median', 'kge_median', 'beats_knn_attr', 'model_structure_changed', 'network_flagged'];
+    const h = ro.createTHead().insertRow(); cols.forEach(c => { const th = document.createElement('th'); th.textContent = c.replaceAll('_', ' '); h.appendChild(th); });
+    const b = ro.createTBody();
+    S.rollouts.forEach(r => { const tr = b.insertRow(); cols.forEach(c => { tr.insertCell().textContent = typeof r[c] === 'number' ? fmt(r[c]) : String(r[c] ?? '–'); }); });
+  }
+})().catch(e => { document.getElementById('meta').textContent = 'Failed to load data: ' + e; });
+</script>
+</body>
+</html>
