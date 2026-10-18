@@ -203,7 +203,9 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   const ro = document.getElementById('rollouts');
   if (!S.rollouts.length) { document.getElementById('rollcard').querySelector('.desc').textContent = 'No model-backed run yet. The pipeline has been verified end to end with scripted stand-ins for both model roles.'; }
   else {
-    const cols = ['label', 'role', 'executor', 'delivered', 'nse_median', 'kge_median', 'beats_knn_attr', 'model_structure_changed', 'network_flagged'];
+    const cols = ['run', 'label', 'role', 'nse_median', 'kge_median', 'beats_knn_attr', 'model_structure_changed', 'network_flagged'];
+    const br = S.meta.base_replicates;
+    if (br) document.getElementById('rollcard').querySelector('.desc').textContent = `Every executor rollout (Claude Opus 5.5). Pilot 0 ran the base harness four times because the Harness² editor failed; with pilot 1's base rollout that gives ${br.n} base-harness replicates, median NSE ${fmt(br.nse_median_min)}–${fmt(br.nse_median_max)} (sd ${fmt(br.nse_median_sd)}): differences smaller than that are run-to-run noise. 'beats knn attr' counts targets where the rollout's NSE exceeds attribute-similarity transfer.`;
     const h = ro.createTHead().insertRow(); cols.forEach(c => { const th = document.createElement('th'); th.textContent = c.replaceAll('_', ' '); h.appendChild(th); });
     const b = ro.createTBody();
     S.rollouts.forEach(r => { const tr = b.insertRow(); cols.forEach(c => { tr.insertCell().textContent = typeof r[c] === 'number' ? fmt(r[c]) : String(r[c] ?? '–'); }); });

@@ -56,6 +56,50 @@ The patch is applied at runtime; the Harness² checkout itself is unmodified.
 
 Success criterion: the agent beats attribute similarity on median NSE.
 
+## Pilot results (2026-10-18, `fold1-pilot30`, k=1 parallel, Claude Opus 5.5 for both roles)
+
+Median test NSE / KGE over the 30 held-out targets:
+
+| Run | NSE | KGE | targets beating attribute similarity |
+|---|---|---|---|
+| Gauged upper bound | 0.685 | 0.747 | |
+| Agent + Harness², selected harness (`agg1`) | 0.664 | 0.664 | 22/30 |
+| Harness² probe, domain edits (`dom1`) | 0.668 | 0.710 | 16/30 |
+| Harness² probe, general edits (`inv1`) | 0.668 | 0.659 | 20/30 |
+| Agent, base harness (`base1`) | 0.664 | 0.659 | 21/30 |
+| Attribute similarity, 5 donors (best classical) | 0.662 | 0.645 | |
+
+* **The agent matches the best classical method.** Every rollout lands at or above
+  attribute similarity on median NSE and, in all but one, on median KGE, and the agent's
+  mean NSE (clipped at −1) is higher in all eight rollouts (0.50–0.54 vs 0.48). No paired
+  difference is significant after accounting for multiple comparisons.
+* **Harness² did not yet produce a measurable gain.** Five base-harness replicates (four
+  from pilot 0, where the editor failed, plus pilot 1's base) give median NSE 0.645–0.664
+  (sd 0.008). The refined harnesses (0.664–0.668) sit at the top of that band, so one k=1
+  step on 30 basins cannot separate them from run-to-run noise.
+* **The edits were sensible.** The general candidate added a deliverable checker and a
+  donor hold-out skill; the domain candidate rewrote the regionalization skill with facts
+  the base run established in its own cross-validation (a donor with missing coordinates
+  that made hold-outs select themselves, 1/d² weighting beating equal weighting, regime
+  classes). The reflector stored the lesson "gate every ranking on a K=1-below-ceiling
+  check". No rollout changed the model structure, and no rollout attempted a download.
+* **Cost.** Executor rollouts $1.2–1.9 each; improver sessions $1.8 each. Pilot 0 $7.8,
+  pilot 1 $11.4.
+
+Next: run the five full folds (133 targets each) in sequence so the Harness² library
+carries lessons across tasks, which also gives the statistical power the 30-basin pilot
+lacks (roughly $12 per fold at k=1).
+
+## Gotchas found while wiring Claude in
+
+* Harness² strips `ANTHROPIC_API_KEY` from improver sessions (patched at runtime).
+* A parent Claude Code session exports `ANTHROPIC_BASE_URL` without `/v1`; OpenCode then
+  calls `/messages` and gets 404. Both roles drop inherited base URLs.
+* The pinned OpenCode maps effort `high` to the legacy thinking budget for any Claude model
+  newer than Opus 4.8, which Claude 5.x rejects; Harness² then silently falls back to the
+  base harness. `hydroagent setup` patches OpenCode, and `hydroagent run` now fails loudly
+  when any stage falls back.
+
 ## Running it
 
 ```bash

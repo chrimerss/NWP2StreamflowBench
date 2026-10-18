@@ -262,6 +262,8 @@ def _stats(v: pd.Series) -> dict:
 def cmd_report(a) -> int:
     from datetime import datetime, timezone
 
+    import numpy as np
+
     per = pd.read_csv(config.RESULTS / "baselines_per_basin.csv", dtype={"gauge_id": str})
     task = a.task[0]
     targets = json.loads((config.HIDDEN / task / "task.json").read_text())["targets"]
@@ -285,10 +287,19 @@ def cmd_report(a) -> int:
         for role, key in (("base", "agent_base"), ("selected-agg", "agent_h2"), ("selected-seq", "agent_h2")):
             g = agent[(agent.task == task) & (agent.role == role)]
             if len(g):
-                g = g.groupby("gauge_id")[["nse", "kge"]].mean()    # average over repeated base rollouts
+                g = g.groupby("gauge_id")[["nse", "kge"]].mean()
                 out["pilot"][key] = _stats(g.nse) | {"kge_median": round(float(g.kge.median()), 4)}
-        roll = pd.read_csv(config.RESULTS / "agent_rollouts.csv")
-        out["rollouts"] = roll.drop(columns=["run_id"]).to_dict(orient="records")
+        roll = pd.read_csv(config.RESULTS / "agent_rollouts.csv").assign(run="pilot 1")
+        rep = config.RESULTS / "pilot0_base_replicates" / "agent_rollouts.csv"
+        if rep.is_file():
+            r0 = pd.read_csv(rep).assign(run="pilot 0 (all base harness)", role="base replicate")
+            roll = pd.concat([roll, r0], ignore_index=True)
+            meds = [x for x in roll[roll.role.isin(["base", "base replicate"])].nse_median.dropna()]
+            out["meta"]["base_replicates"] = {"n": len(meds), "nse_median_mean": round(float(np.mean(meds)), 4),
+                                              "nse_median_sd": round(float(np.std(meds, ddof=1)), 4),
+                                              "nse_median_min": round(float(min(meds)), 4),
+                                              "nse_median_max": round(float(max(meds)), 4)}
+        out["rollouts"] = roll.drop(columns=["run_id"]).where(roll.notna(), None).to_dict(orient="records")
         last = config.RUNS / "last_run.json"
         if roll.executor.notna().any():
             out["meta"]["executor"] = str(roll.executor.dropna().iloc[0])

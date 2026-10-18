@@ -1,0 +1,5 @@
+task,run_id,label,role,executor,delivered,model_structure_changed,network_flagged,nse_median,kge_median,beats_knn_attr
+fold1-pilot30,camels-oc-agg1/fold1-pilot30/agg1,agg1,selected-agg,anthropic/claude-opus-5-5,True,False,False,0.6639,0.6640,22/30
+fold1-pilot30,camels-oc-agg1/fold1-pilot30/base1,base1,base,anthropic/claude-opus-5-5,True,False,False,0.6637,0.6589,21/30
+fold1-pilot30,camels-oc-agg1/fold1-pilot30/dom1,dom1,probe,anthropic/claude-opus-5-5,True,False,False,0.6678,0.7095,16/30
+fold1-pilot30,camels-oc-agg1/fold1-pilot30/inv1,inv1,probe,anthropic/claude-opus-5-5,True,False,False,0.6685,0.6594,20/30
