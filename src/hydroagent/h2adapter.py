@@ -80,6 +80,14 @@ def patch_claude() -> None:
     real_run = _sp.run
 
     def run(cmd, *a, **kw):
+        env = kw.get("env")
+        if isinstance(env, dict) and env.get("OPENCODE_PERMISSION"):
+            try:      # same doom-loop fix for improver sessions
+                perm = json.loads(env["OPENCODE_PERMISSION"])
+                perm.setdefault("doom_loop", "allow")
+                kw["env"] = {**env, "OPENCODE_PERMISSION": json.dumps(perm)}
+            except ValueError:
+                pass
         res = real_run(cmd, *a, **kw)
         try:
             if isinstance(cmd, (list, tuple)) and "src/index.ts" in [str(c) for c in cmd] and \
@@ -238,8 +246,10 @@ class HydroAdapter:
 
     def _opencode(self, ws: Path, out: Path, timeout: int, run_id: str) -> int:
         h2c = self.h2c
+        # doom_loop: OpenCode asks permission when a tool call repeats (e.g. polling a background
+        # calibration log); a non-interactive run auto-rejects it and the session ends early.
         perm = {"external_directory": {"*": "deny", str(ws): "allow", f"{ws}/**": "allow"},
-                "webfetch": "deny", "websearch": "deny", "codesearch": "deny"}
+                "webfetch": "deny", "websearch": "deny", "codesearch": "deny", "doom_loop": "allow"}
         venv_bin = str(Path(sys.executable).parent)
         inherited = {k: v for k, v in os.environ.items()
                      if k not in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")}
