@@ -11,14 +11,14 @@
   color-scheme: light;
   --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
   --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s7: #4a3aa7; --ref: #898781;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --ref: #898781;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s7: #9085e9; --ref: #898781;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --ref: #898781;
   }
 }
 * { box-sizing: border-box; }
@@ -171,13 +171,13 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   const C = S.calib || {};
   if (C.stats && Object.keys(C.stats).length) {
     const cn = Object.fromEntries(C.methods.map(m => [m.id, m.name]));
-    const corder = ['gauged_upper', 'agent_agg1', 'agent_inv1', 'agent_dom1', 'agent_base', 'knn_attr_released', 'dpl'];
-    const ccol = {agent_agg1: '--s1', agent_inv1: '--s4', agent_dom1: '--s5', agent_base: '--s2', knn_attr_released: '--s7', dpl: '--s3', gauged_upper: '--ref'};
-    const st = C.stats, n = st.dpl.n;
+    const corder = ['gauged_upper', 'agent_agg1', 'agent_inv1', 'agent_dom1', 'agent_base', 'knn_attr_released', 'dpl_ens3', 'dpl'];
+    const ccol = {agent_agg1: '--s1', agent_inv1: '--s4', agent_dom1: '--s5', agent_base: '--s2', knn_attr_released: '--s7', dpl_ens3: '--s3', dpl: '--s6', gauged_upper: '--ref'};
+    const st = C.stats, n = st.dpl.n, R = st[C.reference || 'dpl'];
     const reg = C.task.replace('region-', '').replaceAll('-', ' ');
     document.getElementById('calibtitle').textContent = `Calibration framing: ${reg} held out (${n} basins)`;
     const pf = p => p === undefined ? '' : (p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(3)}`);
-    document.getElementById('calibdesc').textContent = `Both sides calibrate dCREST only on the ${C.n_train || ''} training gauges outside the ${reg} region (1999–2008) and predict the ${n} ${reg} basins for 1989–1999. No pre-calibrated parameters are given to the agent. p NSE / p KGE: paired Wilcoxon signed-rank test against the differentiable baseline across basins; p NSE vs base: against the agent's base harness.` + (C.dpl_seeds && C.dpl_seeds.length > 1 ? ` Baseline seeds: median NSE ${C.dpl_seeds.map(fmt).join(', ')}.` : '');
+    document.getElementById('calibdesc').textContent = `Both sides calibrate dCREST only on the ${C.n_train || ''} training gauges outside the ${reg} region (1999–2008) and predict the ${n} ${reg} basins for 1989–1999. No pre-calibrated parameters are given to the agent. Reference baseline: the 3-seed ensemble of the differentiable parameter-learning network (discharge averaged over seeds). p NSE / p KGE: paired Wilcoxon signed-rank test against it across basins; p NSE vs base: against the agent's base harness.` + (C.dpl_seeds && C.dpl_seeds.length > 1 ? ` Baseline seeds: median NSE ${C.dpl_seeds.map(fmt).join(', ')}.` : '');
     const ck = document.getElementById('calibkpis');
     const t2 = (label, v, note, c) => { const d = document.createElement('div'); d.className = 'kpi';
       const l = document.createElement('div'); l.className = 'label'; l.textContent = label;
@@ -185,7 +185,7 @@ footer ul { padding-left: 18px; margin: 4px 0; }
       if (c) { const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = css(c); val.appendChild(sw); }
       val.appendChild(document.createTextNode(v)); const nn = document.createElement('div'); nn.className = 'note'; nn.textContent = note;
       d.append(l, val, nn); ck.appendChild(d); };
-    t2('Differentiable baseline', fmt(st.dpl.nse_median), `median NSE · KGE ${fmt(st.dpl.kge_median)}`, '--s3');
+    t2('Differentiable baseline', fmt(R.nse_median), `3-seed ensemble · KGE ${fmt(R.kge_median)}`, '--s3');
     if (st.agent_base) t2('Agent, base harness', fmt(st.agent_base.nse_median), `KGE ${fmt(st.agent_base.kge_median)} · ${pf(st.agent_base.p_nse_vs_dpl)}`, '--s2');
     if (st.agent_agg1) t2('Agent + Harness² (selected)', fmt(st.agent_agg1.nse_median), `KGE ${fmt(st.agent_agg1.kge_median)} · ${pf(st.agent_agg1.p_nse_vs_dpl)} vs baseline`, '--s1');
     t2('Gauged upper bound', fmt(st.gauged_upper.nse_median), 'own calibration, not reachable without data', '--ref');

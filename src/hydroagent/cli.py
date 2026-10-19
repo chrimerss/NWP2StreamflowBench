@@ -347,7 +347,8 @@ def cmd_report(a) -> int:
 CALIB_NAMES = {
     "gauged_upper": "Gauged upper bound (own calibration)",
     "knn_attr_released": "Released per-basin calibrations + attribute transfer (reference)",
-    "dpl": "Differentiable parameter learning (baseline)",
+    "dpl_ens3": "Differentiable parameter learning, 3-seed ensemble (baseline)",
+    "dpl": "Differentiable parameter learning, single seed",
     "agent_base": "Claude agent, base harness",
     "agent_inv1": "Harness\u00b2 candidate: general edits",
     "agent_dom1": "Harness\u00b2 candidate: domain edits",
@@ -381,12 +382,18 @@ def _calib_report(task: str = "region-Southeast") -> dict:
         a["label"] = a.run_id.str.rsplit("/", n=1).str[-1]
         for lab, g in a.groupby("label"):
             series["agent_base" if lab == "base1" else f"agent_{lab}"] = g.set_index("gauge_id").reindex(ids)
+    ens = rd / f"{task}_ens3_test.csv"
+    ref = dpl
+    if ens.is_file():                        # the stronger baseline: discharge averaged over 3 seeds
+        ref = pd.read_csv(ens, dtype={"gauge_id": str}).set_index("gauge_id").reindex(ids)
+        series["dpl_ens3"] = ref
+    out["reference"] = "dpl_ens3" if ens.is_file() else "dpl"
     for k, g in series.items():
         st = _stats(g.nse) | {"kge_median": round(float(g.kge.median()), 4)}
-        if k != "dpl":
-            st["wins_vs_dpl"] = int((g.nse > dpl.nse).sum())
-            st["p_nse_vs_dpl"] = float(wilcoxon(g.nse, dpl.nse, nan_policy="omit").pvalue)
-            st["p_kge_vs_dpl"] = float(wilcoxon(g.kge, dpl.kge, nan_policy="omit").pvalue)
+        if k != out["reference"]:
+            st["wins_vs_dpl"] = int((g.nse > ref.nse).sum())
+            st["p_nse_vs_dpl"] = float(wilcoxon(g.nse, ref.nse, nan_policy="omit").pvalue)
+            st["p_kge_vs_dpl"] = float(wilcoxon(g.kge, ref.kge, nan_policy="omit").pvalue)
         if k.startswith("agent_") and k != "agent_base" and "agent_base" in series:
             st["p_nse_vs_base"] = float(wilcoxon(g.nse, series["agent_base"].nse, nan_policy="omit").pvalue)
         out["stats"][k] = st
@@ -396,7 +403,7 @@ def _calib_report(task: str = "region-Southeast") -> dict:
     d = None
     for p in sorted(rd.glob("*_test.csv")):
         name = p.name[:-len("_test.csv")]
-        if "_seed" in name:
+        if "_seed" in name or "_ens" in name:
             continue
         g = pd.read_csv(p, dtype={"gauge_id": str})
         row = {"split": name, "kind": g["kind"].iloc[0], "n": len(g),

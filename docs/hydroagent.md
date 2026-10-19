@@ -65,37 +65,61 @@ dCREST's own differentiable optimizer?
 
 ### Result: Southeast held out (median test NSE / KGE, 1989–1999)
 
-| Method | NSE | KGE | beats baseline | p (NSE vs baseline) |
+Reference baseline: the 3-seed ensemble of the parameter-learning network (discharge
+averaged over seeds; single seeds score 0.529, 0.546 and 0.535).
+
+| Method | NSE | KGE | beats ensemble | p (NSE vs ensemble) |
 |---|---|---|---|---|
-| Gauged upper bound (each basin's own released calibration) | 0.682 | 0.717 | 101/126 | < 0.001 |
-| Agent + Harness², selected harness | 0.585 | 0.627 | 93/126 | < 0.001 |
-| Harness² candidate, general edits | 0.607 | 0.630 | 99/126 | < 0.001 |
-| Harness² candidate, domain edits | 0.595 | 0.630 | 81/126 | < 0.001 |
-| Agent, base harness | 0.546 | 0.626 | 73/126 | 0.66 |
-| Released per-basin calibrations + attribute transfer (reference) | 0.565 | 0.650 | 85/126 | < 0.001 |
-| Differentiable parameter learning (baseline) | 0.530 | 0.618 | | |
+| Gauged upper bound (each basin's own released calibration) | 0.682 | 0.717 | 94/126 | < 0.001 |
+| Agent + Harness², selected harness | 0.585 | 0.627 | 81/126 | 0.025 |
+| Harness² candidate, general edits | 0.607 | 0.630 | 90/126 | < 0.001 |
+| Harness² candidate, domain edits | 0.595 | 0.630 | 77/126 | 0.059 |
+| Agent, base harness | 0.546 | 0.626 | 66/126 | 0.34 |
+| Released per-basin calibrations + attribute transfer (reference) | 0.565 | 0.650 | 72/126 | 0.20 |
+| Differentiable parameter learning, 3-seed ensemble (baseline) | 0.559 | 0.627 | | |
+| Differentiable parameter learning, single seed | 0.529 | 0.618 | 31/126 | < 0.001 |
 
-p: paired Wilcoxon signed-rank test across the 126 basins. All three Harness² harnesses
-also beat the base harness (p < 0.001). Cost: $10.6 for the four agent rollouts and $8.4
-for the Harness² sessions.
+p: paired Wilcoxon signed-rank test across the 126 basins. Against every *single* baseline
+seed all three Harness² harnesses win (largest p = 0.014), and all three beat the base
+harness (p < 0.001). Cost: $10.6 for the four agent rollouts and $8.4 for the Harness²
+sessions (Claude Opus 5.5).
 
-* **The agent alone ties the optimizer; Harness² makes it clearly better.** The base
-  harness already calibrated all 539 gauges, built its own regional network and compared
-  about 40 transfer schemes, but finished level with the baseline. Harness² turned that
-  first attempt's discoveries into harness content: a training basin with all-missing
-  attributes that froze joint training, and a hold-out design measurably easier than the
-  real task (hold-out basins 88 km from the nearest training gauge against 176 km for the
-  targets), fixed with a 150 km exclusion buffer. The later attempts started from those
-  facts and spent their budget on the comparison itself.
-* **Even the released calibrations are beaten.** The best candidate (0.607) exceeds attribute
-  transfer of the released per-basin calibrations (0.565, which used six seeds of 2048 Adam
-  steps per basin), p < 0.001.
-* **Caveats.** One split, one base-harness replicate in this framing (the transfer-only
-  pilot measured base-harness noise at sd 0.008 in median NSE on 30 basins; the gains here
-  are 0.04–0.06 on 126). Harness² used four attempts where the base harness used one; its
-  advantage is partly the second attempt's access to the first attempt's evidence, which is
-  the method's point but also more compute. KGE gains are smaller and significant only for
-  the general-edit candidate.
+* **The agent alone ties the optimizer; Harness² makes it better.** The base harness
+  already calibrated all 539 gauges, built its own regional network and compared about 40
+  transfer schemes, but finished level with the baseline. Harness² turned that first
+  attempt's discoveries into harness content: a training basin with all-missing attributes
+  that froze joint training, and a hold-out design measurably easier than the real task
+  (hold-out basins 88 km from the nearest training gauge against 176 km for the targets),
+  fixed with a 150 km exclusion buffer. The later attempts started from those facts.
+* **Against the strongest baseline the margin is real but modest** for the selected harness
+  (+0.026 median NSE, p = 0.025) and large for the general-edit candidate (+0.048,
+  p < 0.001). Harness² selects blindly, so it did not pick its best candidate.
+* **Caveats.** One split; one base-harness replicate in this framing; Harness² used four
+  attempts where the base harness used one. A k=10 sequential run with Claude Sonnet 5.5
+  (in progress) adds ten base-harness replicates and ten optimization rounds.
+
+### Differentiable baseline on every split (median test NSE of held-out basins)
+
+| Split | Kind | Held out | Baseline (single seed) | Released calibrations + attribute transfer | Gauged upper bound |
+|---|---|---|---|---|---|
+| fold1 | random-fold | 133 | 0.587 | 0.604 | 0.651 |
+| fold2 | random-fold | 133 | 0.630 | 0.644 | 0.664 |
+| fold3 | random-fold | 133 | 0.606 | 0.635 | 0.671 |
+| fold4 | random-fold | 133 | 0.611 | 0.619 | 0.656 |
+| fold5 | random-fold | 133 | 0.607 | 0.602 | 0.659 |
+| Northeast | leave-region-out | 91 | 0.591 | 0.585 | 0.668 |
+| Northern Rockies and Plains | leave-region-out | 63 | 0.319 | 0.318 | 0.464 |
+| Northwest | leave-region-out | 78 | 0.619 | 0.685 | 0.776 |
+| Ohio Valley | leave-region-out | 69 | 0.630 | 0.606 | 0.717 |
+| South | leave-region-out | 97 | 0.508 | 0.513 | 0.602 |
+| Southeast | leave-region-out | 126 | 0.529 | 0.565 | 0.682 |
+| Southwest | leave-region-out | 54 | 0.236 | 0.360 | 0.548 |
+| Upper Midwest | leave-region-out | 36 | 0.352 | 0.377 | 0.631 |
+| West | leave-region-out | 51 | 0.540 | 0.467 | 0.689 |
+
+Out of distribution the baseline loses most in the dry and snowy regions (Southwest 0.24,
+Northern Rockies and Plains 0.32, Upper Midwest 0.35), where training gauges from other
+climates teach the network little.
 
 ## Transfer-only pilot: classical baselines (median test NSE / KGE)
 
