@@ -44,7 +44,60 @@ The patch is applied at runtime; the Harness² checkout itself is unmodified.
   `scripts/hydrokit.py`), ensembles, and edits to the model structure in the workspace's
   own copy of `dcrest/`.
 
-## Baselines (median test NSE / KGE)
+## Calibration framing (primary experiment)
+
+The question: given only raw data for the training gauges of a split, does a Claude agent
+refined by Harness² calibrate dCREST and predict out-of-distribution basins better than
+dCREST's own differentiable optimizer?
+
+* **Agent** (`--variant calib`, base harness `harness_calib/`): no pre-calibrated
+  parameters. It calibrates the training gauges itself (per basin, jointly, or by learning
+  an attribute-to-parameter mapping) and decides how to predict the held-out basins.
+* **Baseline** (`hydroagent dpl`, `dpl.py`): differentiable parameter learning. An MLP
+  (two hidden layers of 256) maps 23 standardised CAMELS attributes to the 16 dCREST
+  parameters; it is trained by Adam (lr 3e-3, up to 500 steps) through dCREST on all
+  training gauges at once with loss mean(1 − NSE) over 1999-10..2008-09 (spin-up from
+  1996-10), keeps the step with the best validation median NSE on 10% held-out training
+  gauges, and is applied unchanged to the held-out basins.
+* **Splits.** Five region-stratified random folds and nine leave-one-climate-region-out
+  splits. The agent ran on one split fixed before any result was seen: the largest region,
+  Southeast (126 held-out basins, 539 training gauges).
+
+### Result: Southeast held out (median test NSE / KGE, 1989–1999)
+
+| Method | NSE | KGE | beats baseline | p (NSE vs baseline) |
+|---|---|---|---|---|
+| Gauged upper bound (each basin's own released calibration) | 0.682 | 0.717 | 101/126 | < 0.001 |
+| Agent + Harness², selected harness | 0.585 | 0.627 | 93/126 | < 0.001 |
+| Harness² candidate, general edits | 0.607 | 0.630 | 99/126 | < 0.001 |
+| Harness² candidate, domain edits | 0.595 | 0.630 | 81/126 | < 0.001 |
+| Agent, base harness | 0.546 | 0.626 | 73/126 | 0.66 |
+| Released per-basin calibrations + attribute transfer (reference) | 0.565 | 0.650 | 85/126 | < 0.001 |
+| Differentiable parameter learning (baseline) | 0.530 | 0.618 | | |
+
+p: paired Wilcoxon signed-rank test across the 126 basins. All three Harness² harnesses
+also beat the base harness (p < 0.001). Cost: $10.6 for the four agent rollouts and $8.4
+for the Harness² sessions.
+
+* **The agent alone ties the optimizer; Harness² makes it clearly better.** The base
+  harness already calibrated all 539 gauges, built its own regional network and compared
+  about 40 transfer schemes, but finished level with the baseline. Harness² turned that
+  first attempt's discoveries into harness content: a training basin with all-missing
+  attributes that froze joint training, and a hold-out design measurably easier than the
+  real task (hold-out basins 88 km from the nearest training gauge against 176 km for the
+  targets), fixed with a 150 km exclusion buffer. The later attempts started from those
+  facts and spent their budget on the comparison itself.
+* **Even the released calibrations are beaten.** The best candidate (0.607) exceeds attribute
+  transfer of the released per-basin calibrations (0.565, which used six seeds of 2048 Adam
+  steps per basin), p < 0.001.
+* **Caveats.** One split, one base-harness replicate in this framing (the transfer-only
+  pilot measured base-harness noise at sd 0.008 in median NSE on 30 basins; the gains here
+  are 0.04–0.06 on 126). Harness² used four attempts where the base harness used one; its
+  advantage is partly the second attempt's access to the first attempt's evidence, which is
+  the method's point but also more compute. KGE gains are smaller and significant only for
+  the general-edit candidate.
+
+## Transfer-only pilot: classical baselines (median test NSE / KGE)
 
 | Method | 665 basins, 5-fold CV | Pilot, 30 targets |
 |---|---|---|
@@ -56,7 +109,7 @@ The patch is applied at runtime; the Harness² checkout itself is unmodified.
 
 Success criterion: the agent beats attribute similarity on median NSE.
 
-## Pilot results (2026-10-18, `fold1-pilot30`, k=1 parallel, Claude Opus 5.5 for both roles)
+## Transfer-only pilot results (2026-10-18, `fold1-pilot30`, k=1 parallel, Claude Opus 5.5 for both roles)
 
 Median test NSE / KGE over the 30 held-out targets:
 
