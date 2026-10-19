@@ -1,0 +1,5 @@
+task,run_id,label,role,executor,delivered,model_structure_changed,network_flagged,nse_median,kge_median,beats_knn_attr
+region-Southeast,camels-calib-oc-agg1/region-Southeast/agg1,agg1,selected-agg,anthropic/claude-opus-5-5,True,False,False,0.5852,0.6272,93/126
+region-Southeast,camels-calib-oc-agg1/region-Southeast/base1,base1,base,anthropic/claude-opus-5-5,True,False,False,0.5463,0.6264,73/126
+region-Southeast,camels-calib-oc-agg1/region-Southeast/dom1,dom1,probe,anthropic/claude-opus-5-5,True,False,False,0.5954,0.6297,81/126
+region-Southeast,camels-calib-oc-agg1/region-Southeast/inv1,inv1,probe,anthropic/claude-opus-5-5,True,False,False,0.6069,0.6304,99/126

@@ -59,10 +59,27 @@ footer ul { padding-left: 18px; margin: 4px 0; }
 <header>
   <nav><a href="index.html">Forecast leaderboard</a><a class="on" href="agent.html">Ungauged-basin agent</a></nav>
   <h1>Ungauged-basin agent</h1>
-  <p class="sub">A Claude-backed hydrologic-modelling agent calibrates the dCREST model on gauged CAMELS-US donor basins and predicts daily discharge in held-out, anonymised "virtual ungauged" basins. Google's Harness² refines the agent's own harness (prompts, skills, scripts) between attempts. Everything is scored on the 1989–1999 benchmark test period with USGS observations the agent never sees, and compared with classical regionalization of the released dCREST-CAMELS parameters.</p>
+  <p class="sub">A Claude-backed hydrologic-modelling agent calibrates the dCREST model on the training gauges of a split and predicts daily discharge in held-out, anonymised basins it never saw. Google's Harness² refines the agent's own harness (prompts, skills, scripts) between attempts. The baseline is dCREST's own differentiable optimizer: a parameter-learning network trained by gradient descent through the model on the same training gauges. Everything is scored on the 1989–1999 benchmark test period with USGS observations neither side sees.</p>
   <p class="meta" id="meta">Loading…</p>
 </header>
 
+
+<div class="card" id="calibcard">
+  <h2 id="calibtitle">Calibration framing: one climate region held out</h2>
+  <p class="desc" id="calibdesc"></p>
+  <div class="kpis" id="calibkpis" style="margin-top:6px"></div>
+  <div class="tablewrap"><table id="calibboard"></table></div>
+  <div id="calibecdf" class="chart" style="min-height:380px"></div>
+</div>
+
+<div class="card">
+  <h2>Differentiable baseline across splits</h2>
+  <p class="desc">Median test NSE on the held-out basins of every split. Random folds hold out basins interspersed with the training gauges; leave-region-out splits hold out a whole NOAA climate region. The reference column transfers the released per-basin calibrations by attribute similarity; the agent only ran on the split marked with ●.</p>
+  <div class="tablewrap"><table id="splits"></table></div>
+</div>
+
+<h2 style="font-size:18px;margin:28px 0 4px">Transfer-only pilot (agent given the released donor calibrations)</h2>
+<p class="desc" style="color:var(--ink-2);font-size:13px;margin:0 0 6px">The first experiment: the agent received the released per-basin parameters of the donors and only had to transfer them to 30 basins of a random fold.</p>
 <div class="kpis" id="kpis"></div>
 
 <div class="grid2">
@@ -126,7 +143,8 @@ footer ul { padding-left: 18px; margin: 4px 0; }
     `Updated ${m.generated} · test ${m.test[0]} → ${m.test[1]} · donor observations ${m.train[0]} → ${m.train[1]} · ` +
     `${m.n_basins} basins in ${m.folds} folds · pilot ${m.pilot_task} (${m.n_pilot} targets)` + (m.executor ? ` · executor ${m.executor}` : ' · agent run pending');
 
-  // KPIs
+
+  // KPIs (transfer-only pilot)
   const kp = document.getElementById('kpis');
   const tile = (label, v, note, c) => {
     const d = document.createElement('div'); d.className = 'kpi';
@@ -149,6 +167,52 @@ footer ul { padding-left: 18px; margin: 4px 0; }
     margin: {l: 240, r: 16, t: 26, b: 44}, showlegend: false,
     hoverlabel: {bgcolor: css('--surface'), bordercolor: css('--axis'), font: {color: css('--ink')}}, ...extra});
   const cfg = {displayModeBar: false, responsive: true};
+  // ---------------- calibration framing ----------------
+  const C = S.calib || {};
+  if (C.stats && Object.keys(C.stats).length) {
+    const cn = Object.fromEntries(C.methods.map(m => [m.id, m.name]));
+    const corder = ['gauged_upper', 'agent_agg1', 'agent_inv1', 'agent_dom1', 'agent_base', 'knn_attr_released', 'dpl'];
+    const ccol = {agent_agg1: '--s1', agent_inv1: '--s4', agent_dom1: '--s5', agent_base: '--s2', knn_attr_released: '--s7', dpl: '--s3', gauged_upper: '--ref'};
+    const st = C.stats, n = st.dpl.n;
+    const reg = C.task.replace('region-', '').replaceAll('-', ' ');
+    document.getElementById('calibtitle').textContent = `Calibration framing: ${reg} held out (${n} basins)`;
+    const pf = p => p === undefined ? '' : (p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(3)}`);
+    document.getElementById('calibdesc').textContent = `Both sides calibrate dCREST only on the ${C.n_train || ''} training gauges outside the ${reg} region (1999–2008) and predict the ${n} ${reg} basins for 1989–1999. No pre-calibrated parameters are given to the agent. p NSE / p KGE: paired Wilcoxon signed-rank test against the differentiable baseline across basins; p NSE vs base: against the agent's base harness.` + (C.dpl_seeds && C.dpl_seeds.length > 1 ? ` Baseline seeds: median NSE ${C.dpl_seeds.map(fmt).join(', ')}.` : '');
+    const ck = document.getElementById('calibkpis');
+    const t2 = (label, v, note, c) => { const d = document.createElement('div'); d.className = 'kpi';
+      const l = document.createElement('div'); l.className = 'label'; l.textContent = label;
+      const val = document.createElement('div'); val.className = 'value';
+      if (c) { const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = css(c); val.appendChild(sw); }
+      val.appendChild(document.createTextNode(v)); const nn = document.createElement('div'); nn.className = 'note'; nn.textContent = note;
+      d.append(l, val, nn); ck.appendChild(d); };
+    t2('Differentiable baseline', fmt(st.dpl.nse_median), `median NSE · KGE ${fmt(st.dpl.kge_median)}`, '--s3');
+    if (st.agent_base) t2('Agent, base harness', fmt(st.agent_base.nse_median), `KGE ${fmt(st.agent_base.kge_median)} · ${pf(st.agent_base.p_nse_vs_dpl)}`, '--s2');
+    if (st.agent_agg1) t2('Agent + Harness² (selected)', fmt(st.agent_agg1.nse_median), `KGE ${fmt(st.agent_agg1.kge_median)} · ${pf(st.agent_agg1.p_nse_vs_dpl)} vs baseline`, '--s1');
+    t2('Gauged upper bound', fmt(st.gauged_upper.nse_median), 'own calibration, not reachable without data', '--ref');
+    const cb = document.getElementById('calibboard');
+    const h = cb.createTHead().insertRow();
+    ['Method', 'NSE', 'KGE', 'NSE IQR', 'NSE > 0', 'Beats baseline', 'p NSE', 'p KGE', 'p NSE vs base'].forEach(t => { const th = document.createElement('th'); th.textContent = t; h.appendChild(th); });
+    const b = cb.createTBody();
+    corder.filter(id => st[id]).forEach(id => {
+      const s = st[id], tr = b.insertRow();
+      const c0 = tr.insertCell(); const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = css(ccol[id]); c0.append(sw, document.createTextNode(cn[id]));
+      [fmt(s.nse_median), fmt(s.kge_median), `${fmt(s.q25)} – ${fmt(s.q75)}`, `${Math.round(100 * s.frac_gt0)}%`,
+       s.wins_vs_dpl !== undefined ? `${s.wins_vs_dpl}/${s.n}` : '–', pf(s.p_nse_vs_dpl) || '–', pf(s.p_kge_vs_dpl) || '–', pf(s.p_nse_vs_base) || '–'].forEach(v => { tr.insertCell().textContent = v; });
+    });
+    const et2 = corder.filter(id => st[id]?.ecdf).map(id => { const v = st[id].ecdf, nn = v.length;
+      return {x: v, y: v.map((_, i) => (i + 1) / nn), mode: 'lines', name: cn[id], line: {shape: 'hv', width: 2, color: css(ccol[id]), dash: id === 'gauged_upper' ? 'dash' : (id === 'knn_attr_released' ? 'dot' : 'solid')},
+              hovertemplate: `${cn[id]}: %{y:.0%} of basins below NSE %{x:.2f}<extra></extra>`}; });
+    Plotly.react('calibecdf', et2, layout({margin: {l: 52, r: 16, t: 10, b: 150}, showlegend: true, legend: {orientation: 'h', y: -0.42, x: 0},
+      xaxis: {range: [-1, 1], title: 'Test NSE (held-out region)', gridcolor: css('--grid'), zeroline: false, tickfont: {color: css('--muted')}},
+      yaxis: {range: [0, 1], tickformat: '.0%', title: 'Share of basins', gridcolor: css('--grid'), tickfont: {color: css('--muted')}}, hovermode: 'closest'}), cfg);
+    const sp = document.getElementById('splits');
+    const sh = sp.createTHead().insertRow();
+    ['Split', 'Kind', 'Held-out basins', 'Differentiable baseline NSE', 'Baseline KGE', 'Reference transfer NSE', 'Gauged upper bound NSE'].forEach(t => { const th = document.createElement('th'); th.textContent = t; sh.appendChild(th); });
+    const sb = sp.createTBody();
+    (C.splits || []).forEach(r => { const tr = sb.insertRow();
+      [(r.split === C.task ? '● ' : '') + r.split.replace('region-', '').replaceAll('-', ' '), r.kind, r.n, fmt(r.dpl_nse), fmt(r.dpl_kge), fmt(r.knn_attr_nse), fmt(r.gauged_upper_nse)].forEach(v => { tr.insertCell().textContent = v; }); });
+  }
+
 
   // dot plot, two panels
   const traces = [];

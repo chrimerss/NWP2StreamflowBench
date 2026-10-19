@@ -339,11 +339,89 @@ def cmd_report(a) -> int:
         last = config.RUNS / "last_run.json"
         if roll.executor.notna().any():
             out["meta"]["executor"] = str(roll.executor.dropna().iloc[0])
+    out["calib"] = _calib_report()
     f = config.REPO / "docs" / "data" / "hydroagent.json"
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(out, separators=(",", ":")))
     print(f"wrote {f}")
     return 0
+
+
+CALIB_NAMES = {
+    "gauged_upper": "Gauged upper bound (own calibration)",
+    "knn_attr_released": "Released per-basin calibrations + attribute transfer (reference)",
+    "dpl": "Differentiable parameter learning (baseline)",
+    "agent_base": "Claude agent, base harness",
+    "agent_inv1": "Harness\u00b2 candidate: general edits",
+    "agent_dom1": "Harness\u00b2 candidate: domain edits",
+    "agent_agg1": "Claude agent + Harness\u00b2 (selected)",
+}
+
+
+def _calib_report(task: str = "region-Southeast") -> dict:
+    """Calibration framing: agent vs differentiable parameter learning on held-out basins."""
+    import numpy as np
+    from scipy.stats import wilcoxon
+
+    from . import baselines, camels
+    rd = config.RESULTS / "dpl"
+    out = {"task": task, "methods": [{"id": k, "name": v} for k, v in CALIB_NAMES.items()], "stats": {}, "splits": []}
+    f0 = rd / f"{task}_test.csv"
+    if not f0.is_file():
+        return out
+    dpl = pd.read_csv(f0, dtype={"gauge_id": str}).set_index("gauge_id")
+    ids = list(dpl.index)
+    seeds = [dpl] + [pd.read_csv(p, dtype={"gauge_id": str}).set_index("gauge_id").reindex(ids)
+                     for p in sorted(rd.glob(f"{task}_seed*_test.csv"))]
+    cl = pd.read_csv(config.RESULTS / f"baselines_per_basin_{task}.csv", dtype={"gauge_id": str})
+    series = {"gauged_upper": cl[cl.method == "gauged_upper"].set_index("gauge_id").reindex(ids),
+              "knn_attr_released": cl[cl.method == "knn_attr"].set_index("gauge_id").reindex(ids),
+              "dpl": dpl}
+    ag = config.RESULTS / "calib" / "agent_per_basin.csv"
+    if ag.is_file():
+        a = pd.read_csv(ag, dtype={"gauge_id": str})
+        a = a[a.task == task]
+        a["label"] = a.run_id.str.rsplit("/", n=1).str[-1]
+        for lab, g in a.groupby("label"):
+            series["agent_base" if lab == "base1" else f"agent_{lab}"] = g.set_index("gauge_id").reindex(ids)
+    for k, g in series.items():
+        st = _stats(g.nse) | {"kge_median": round(float(g.kge.median()), 4)}
+        if k != "dpl":
+            st["wins_vs_dpl"] = int((g.nse > dpl.nse).sum())
+            st["p_nse_vs_dpl"] = float(wilcoxon(g.nse, dpl.nse, nan_policy="omit").pvalue)
+            st["p_kge_vs_dpl"] = float(wilcoxon(g.kge, dpl.kge, nan_policy="omit").pvalue)
+        if k.startswith("agent_") and k != "agent_base" and "agent_base" in series:
+            st["p_nse_vs_base"] = float(wilcoxon(g.nse, series["agent_base"].nse, nan_policy="omit").pvalue)
+        out["stats"][k] = st
+    out["dpl_seeds"] = [round(float(x.nse.median()), 4) for x in seeds]
+    out["n_train"] = len(json.loads((config.HIDDEN / task / "task.json").read_text())["donors"])
+    # baseline across every split
+    d = None
+    for p in sorted(rd.glob("*_test.csv")):
+        name = p.name[:-len("_test.csv")]
+        if "_seed" in name:
+            continue
+        g = pd.read_csv(p, dtype={"gauge_id": str})
+        row = {"split": name, "kind": g["kind"].iloc[0], "n": len(g),
+               "dpl_nse": round(float(g.nse.median()), 4), "dpl_kge": round(float(g.kge.median()), 4)}
+        cf = config.RESULTS / (f"baselines_per_basin_{name}.csv" if name.startswith("region-") else "baselines_per_basin.csv")
+        if name.startswith("region-") and not cf.is_file():
+            if d is None:
+                from nwp2sf.basins import load_basins
+                d = camels.load()
+                attrs = camels.attributes(d["ids"])
+                regions = load_basins(config.REPO / "data", include_excluded=True).region.reindex(d["ids"]).fillna("Other")
+                from .protocol import make_tasks
+                tasks = make_tasks(attrs, regions)
+            t = tasks[name]
+            res = baselines.run(d, attrs, list(t.targets), list(t.donors))
+            pd.concat([r.assign(method=m) for m, r in res.items()]).to_csv(cf, float_format="%.4f")
+        c2 = pd.read_csv(cf, dtype={"gauge_id": str})
+        c2 = c2[c2.gauge_id.isin(set(g.gauge_id))]
+        for m in ("knn_attr", "gauged_upper"):
+            row[f"{m}_nse"] = round(float(c2[c2.method == m].nse.median()), 4)
+        out["splits"].append(row)
+    return out
 
 
 def main(argv=None) -> int:
