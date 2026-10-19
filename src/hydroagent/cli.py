@@ -433,6 +433,10 @@ def _calib_report(task: str = "region-Southeast") -> dict:
         out["stats"][k] = st
     out["dpl_seeds"] = [round(float(x.nse.median()), 4) for x in seeds]
     out["k10"] = _k10_report(task, ids, ref)
+    try:
+        out["exp3"] = _exp3_report(task, ids, ref)
+    except Exception as e:          # partial data while experiment 3 runs
+        out["exp3"] = {"error": f"{type(e).__name__}: {e}"}
     out["n_train"] = len(json.loads((config.HIDDEN / task / "task.json").read_text())["donors"])
     # baseline across every split
     d = None
@@ -492,6 +496,61 @@ def _k10_report(task: str, ids, ref) -> dict:
     if es.is_file():
         out["stopped"] = json.loads(es.read_text()).get("stopped")
     out["rounds"].sort(key=lambda r: (r["round"], r["kind"]))
+    return out
+
+
+def _exp3_report(task: str, ids, ref) -> dict:
+    """Experiment 3: Opus editor vs Sonnet editor (Sonnet agent), parallel k=3, 3 runs per harness."""
+    import numpy as np
+    from scipy.stats import mannwhitneyu, wilcoxon
+
+    from .h2adapter import HydroAdapter, configure
+    configure()
+    R = config.RUNS / "rollouts"
+    groups = {
+        "base": [("base", sorted(R.glob(f"camels-calib-oc-agg10/{task}/base*")) + sorted(R.glob(f"camels-calib-oc-agg3/{task}/base*")))],
+        "sonnet_editor": [(f"sonnet-{h}", [R / f"camels-calib-oc-seq10/{task}/{h}"] + sorted(R.glob(f"replicates/{task}/sonnetimp-{h}/r*")))
+                          for h in ("inv1", "dom1", "c1")],
+        "opus_editor": [(f"opus-{h}", [R / f"camels-calib-oc-agg3/{task}/{h}"] + sorted(R.glob(f"replicates/{task}/opusimp-{h}/r*")))
+                        for h in ("inv1", "inv2", "inv3", "dom1", "dom2", "dom3", "agg1", "agg2", "agg3")],
+    }
+    a = HydroAdapter([task], variant="calib")
+    out = {"harnesses": [], "groups": {}}
+    per = {}
+    for gname, items in groups.items():
+        for label, dirs in items:
+            runs = []
+            for d in dirs:
+                if (d / "rollout.json").is_file() and a.delivered(d):
+                    sc = a.score(d, task)
+                    runs.append(pd.DataFrame(sc["per_basin"]).set_index("gauge_id").reindex(ids))
+            if not runs:
+                continue
+            meds = [float(r.nse.median()) for r in runs]
+            avg = pd.concat([r.nse for r in runs], axis=1).mean(axis=1)
+            per[label] = avg
+            out["harnesses"].append({"group": gname, "label": label, "n_runs": len(runs),
+                                     "run_nse": [round(m, 4) for m in meds],
+                                     "mean_run_nse": round(float(np.mean(meds)), 4),
+                                     "sd_run_nse": round(float(np.std(meds, ddof=1)), 4) if len(meds) > 1 else None,
+                                     "avg_basin_nse_median": round(float(avg.median()), 4),
+                                     "p_vs_dpl": float(wilcoxon(avg, ref.nse, nan_policy="omit").pvalue)})
+    if "base" in per:
+        for h in out["harnesses"]:
+            if h["label"] != "base":
+                h["p_vs_base"] = float(wilcoxon(per[h["label"]], per["base"], nan_policy="omit").pvalue)
+    for g in groups:
+        hs = [h for h in out["harnesses"] if h["group"] == g]
+        if hs:
+            out["groups"][g] = {"n_harnesses": len(hs), "mean_of_means": round(float(np.mean([h["mean_run_nse"] for h in hs])), 4)}
+    so = [h["mean_run_nse"] for h in out["harnesses"] if h["group"] == "sonnet_editor"]
+    op = [h["mean_run_nse"] for h in out["harnesses"] if h["group"] == "opus_editor"]
+    if len(so) >= 2 and len(op) >= 2:
+        out["p_opus_vs_sonnet_editor"] = float(mannwhitneyu(op, so).pvalue)
+    sel = next((p for p in (config.RUNS / "adapt").glob(f"camels-calib-oc-agg3/{task}/summary.json")), None)
+    if sel is not None:
+        js = json.loads(sel.read_text())
+        out["selected"] = "opus-" + str((js.get("selections") or {}).get("agg", {}).get("chosen_label"))
     return out
 
 
