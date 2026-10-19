@@ -93,8 +93,8 @@ def test_calib_variant_has_no_precalibrated_parameters():
     assert a.base_harness().name == "harness_calib" and a.spec.name == "camels-calib"
     assert "released" not in (a.base_harness() / "systemprompt.md").read_text()
     # targets all in the held-out region, donors in none of it
-    from nwp2sf.basins import load_basins
-    reg = load_basins(config.REPO / "data", include_excluded=True).region
+    from hydroagent.regions import load_regions
+    reg = load_regions()
     mapping = json.loads((config.HIDDEN / "region-Southeast" / "mapping.json").read_text())
     assert {reg[g] for t, g in mapping.items() if t.startswith("T")} == {"Southeast"}
     assert "Southeast" not in {reg[g] for t, g in mapping.items() if t.startswith("D")}

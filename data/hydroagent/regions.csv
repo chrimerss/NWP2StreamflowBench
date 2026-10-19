@@ -1,0 +1,666 @@
+gauge_id,state,region
+01013500,ME,Northeast
+01022500,ME,Northeast
+01030500,ME,Northeast
+01031500,ME,Northeast
+01047000,ME,Northeast
+01052500,NH,Northeast
+01054200,ME,Northeast
+01055000,ME,Northeast
+01057000,ME,Northeast
+01073000,NH,Northeast
+01078000,NH,Northeast
+01118300,CT,Northeast
+01121000,CT,Northeast
+01123000,CT,Northeast
+01134500,VT,Northeast
+01137500,NH,Northeast
+01139000,VT,Northeast
+01139800,VT,Northeast
+01142500,VT,Northeast
+01144000,VT,Northeast
+01169000,MA,Northeast
+01170100,MA,Northeast
+01181000,MA,Northeast
+01187300,MA,Northeast
+01195100,CT,Northeast
+01333000,MA,Northeast
+01350000,NY,Northeast
+01350080,NY,Northeast
+01350140,NY,Northeast
+01365000,NY,Northeast
+01411300,NJ,Northeast
+01413500,NY,Northeast
+01414500,NY,Northeast
+01415000,NY,Northeast
+01423000,NY,Northeast
+01434025,NY,Northeast
+01435000,NY,Northeast
+01439500,PA,Northeast
+01440000,NJ,Northeast
+01440400,PA,Northeast
+01451800,PA,Northeast
+01466500,NJ,Northeast
+01484100,DE,Northeast
+01485500,MD,Northeast
+01486000,MD,Northeast
+01487000,DE,Northeast
+01491000,MD,Northeast
+01510000,NY,Northeast
+01516500,PA,Northeast
+01518862,PA,Northeast
+01532000,PA,Northeast
+01539000,PA,Northeast
+01542810,PA,Northeast
+01543000,PA,Northeast
+01543500,PA,Northeast
+01544500,PA,Northeast
+01545600,PA,Northeast
+01547700,PA,Northeast
+01548500,PA,Northeast
+01549500,PA,Northeast
+01550000,PA,Northeast
+01552000,PA,Northeast
+01552500,PA,Northeast
+01557500,PA,Northeast
+01567500,PA,Northeast
+01568000,PA,Northeast
+01580000,MD,Northeast
+01583500,MD,Northeast
+01586610,MD,Northeast
+01591400,MD,Northeast
+01594950,MD,Northeast
+01596500,MD,Northeast
+01605500,WV,Ohio Valley
+01606500,WV,Ohio Valley
+01613050,PA,Northeast
+01620500,VA,Southeast
+01632000,VA,Southeast
+01632900,VA,Southeast
+01634500,VA,Southeast
+01638480,VA,Southeast
+01639500,MD,Northeast
+01644000,VA,Southeast
+01658500,VA,Southeast
+01664000,VA,Southeast
+01666500,VA,Southeast
+01667500,VA,Southeast
+01669000,VA,Southeast
+01669520,VA,Southeast
+02011400,VA,Southeast
+02011460,VA,Southeast
+02013000,VA,Southeast
+02014000,VA,Southeast
+02015700,VA,Southeast
+02016000,VA,Southeast
+02017500,VA,Southeast
+02018000,VA,Southeast
+02027000,VA,Southeast
+02027500,VA,Southeast
+02028500,VA,Southeast
+02038850,VA,Southeast
+02046000,VA,Southeast
+02051000,VA,Southeast
+02051500,VA,Southeast
+02053200,NC,Southeast
+02053800,VA,Southeast
+02055100,VA,Southeast
+02056900,VA,Southeast
+02059500,VA,Southeast
+02064000,VA,Southeast
+02065500,VA,Southeast
+02069700,VA,Southeast
+02070000,VA,Southeast
+02074500,VA,Southeast
+02077200,NC,Southeast
+02081500,NC,Southeast
+02082950,NC,Southeast
+02092500,NC,Southeast
+02096846,NC,Southeast
+02102908,NC,Southeast
+02108000,NC,Southeast
+02111180,NC,Southeast
+02111500,NC,Southeast
+02112120,NC,Southeast
+02112360,NC,Southeast
+02118500,NC,Southeast
+02125000,NC,Southeast
+02128000,NC,Southeast
+02137727,NC,Southeast
+02140991,NC,Southeast
+02143000,NC,Southeast
+02143040,NC,Southeast
+02149000,NC,Southeast
+02152100,NC,Southeast
+02177000,GA,Southeast
+02178400,GA,Southeast
+02193340,GA,Southeast
+02196000,SC,Southeast
+02198100,GA,Southeast
+02202600,GA,Southeast
+02212600,GA,Southeast
+02215100,GA,Southeast
+02216180,GA,Southeast
+02221525,GA,Southeast
+02231000,FL,Southeast
+02231342,FL,Southeast
+02235200,FL,Southeast
+02245500,FL,Southeast
+02246000,FL,Southeast
+02296500,FL,Southeast
+02297155,FL,Southeast
+02297310,FL,Southeast
+02298123,FL,Southeast
+02298608,FL,Southeast
+02299950,FL,Southeast
+02300700,FL,Southeast
+02310947,FL,Southeast
+02312200,FL,Southeast
+02314500,GA,Southeast
+02315500,FL,Southeast
+02324400,FL,Southeast
+02327100,FL,Southeast
+02342933,AL,Southeast
+02349900,GA,Southeast
+02350900,GA,Southeast
+02361000,AL,Southeast
+02363000,AL,Southeast
+02369800,AL,Southeast
+02371500,AL,Southeast
+02372250,AL,Southeast
+02374500,AL,Southeast
+02381600,GA,Southeast
+02384540,GA,Southeast
+02395120,GA,Southeast
+02408540,AL,Southeast
+02415000,AL,Southeast
+02422500,AL,Southeast
+02427250,AL,Southeast
+02430085,MS,South
+02430615,MS,South
+02450250,AL,Southeast
+02464000,AL,Southeast
+02464146,AL,Southeast
+02464360,AL,Southeast
+02465493,AL,Southeast
+02469800,AL,Southeast
+02472000,MS,South
+02472500,MS,South
+02479155,MS,South
+02479300,MS,South
+02479560,MS,South
+02481000,MS,South
+02481510,MS,South
+03010655,PA,Northeast
+03011800,PA,Northeast
+03015500,PA,Northeast
+03021350,PA,Northeast
+03026500,PA,Northeast
+03028000,PA,Northeast
+03049000,PA,Northeast
+03049800,PA,Northeast
+03050000,WV,Ohio Valley
+03066000,WV,Ohio Valley
+03069500,WV,Ohio Valley
+03070500,WV,Ohio Valley
+03076600,MD,Northeast
+03078000,MD,Northeast
+03140000,OH,Ohio Valley
+03144000,OH,Ohio Valley
+03159540,OH,Ohio Valley
+03161000,NC,Southeast
+03164000,VA,Southeast
+03165000,VA,Southeast
+03170000,VA,Southeast
+03173000,VA,Southeast
+03180500,WV,Ohio Valley
+03182500,WV,Ohio Valley
+03186500,WV,Ohio Valley
+03187500,WV,Ohio Valley
+03213700,KY,Ohio Valley
+03237280,OH,Ohio Valley
+03237500,OH,Ohio Valley
+03238500,OH,Ohio Valley
+03241500,OH,Ohio Valley
+03280700,KY,Ohio Valley
+03281100,KY,Ohio Valley
+03281500,KY,Ohio Valley
+03285000,KY,Ohio Valley
+03291780,IN,Ohio Valley
+03300400,KY,Ohio Valley
+03338780,IL,Ohio Valley
+03340800,IN,Ohio Valley
+03346000,IL,Ohio Valley
+03364500,IN,Ohio Valley
+03366500,IN,Ohio Valley
+03368000,IN,Ohio Valley
+03384450,IL,Ohio Valley
+03439000,NC,Southeast
+03450000,NC,Southeast
+03455500,NC,Southeast
+03456500,NC,Southeast
+03460000,NC,Southeast
+03463300,NC,Southeast
+03471500,VA,Southeast
+03473000,VA,Southeast
+03479000,NC,Southeast
+03488000,VA,Southeast
+03498500,TN,Ohio Valley
+03500000,NC,Southeast
+03500240,NC,Southeast
+03504000,NC,Southeast
+03574500,AL,Southeast
+03592718,MS,South
+03604000,TN,Ohio Valley
+04015330,MN,Upper Midwest
+04024430,WI,Upper Midwest
+04027000,WI,Upper Midwest
+04040500,MI,Upper Midwest
+04043050,MI,Upper Midwest
+04045500,MI,Upper Midwest
+04056500,MI,Upper Midwest
+04057510,MI,Upper Midwest
+04057800,MI,Upper Midwest
+04059500,MI,Upper Midwest
+04063700,WI,Upper Midwest
+04074950,WI,Upper Midwest
+04105700,MI,Upper Midwest
+04115265,MI,Upper Midwest
+04122200,MI,Upper Midwest
+04122500,MI,Upper Midwest
+04124000,MI,Upper Midwest
+04127997,MI,Upper Midwest
+04161580,MI,Upper Midwest
+04185000,OH,Ohio Valley
+04196800,OH,Ohio Valley
+04197100,OH,Ohio Valley
+04197170,OH,Ohio Valley
+04213000,OH,Ohio Valley
+04213075,PA,Northeast
+04216418,NY,Northeast
+04221000,NY,Northeast
+04224775,NY,Northeast
+04233000,NY,Northeast
+04256000,NY,Northeast
+04296000,VT,Northeast
+05057000,ND,Northern Rockies and Plains
+05057200,ND,Northern Rockies and Plains
+05062500,MN,Upper Midwest
+05087500,MN,Upper Midwest
+05120500,ND,Northern Rockies and Plains
+05123400,ND,Northern Rockies and Plains
+05129115,MN,Upper Midwest
+05131500,MN,Upper Midwest
+05291000,SD,Northern Rockies and Plains
+05362000,WI,Upper Midwest
+05393500,WI,Upper Midwest
+05399500,WI,Upper Midwest
+05408000,WI,Upper Midwest
+05412500,IA,Upper Midwest
+05413500,WI,Upper Midwest
+05414000,WI,Upper Midwest
+05444000,IL,Ohio Valley
+05454000,IA,Upper Midwest
+05458000,IA,Upper Midwest
+05466500,IL,Ohio Valley
+05487980,IA,Upper Midwest
+05488200,IA,Upper Midwest
+05489000,IA,Upper Midwest
+05495000,MO,Ohio Valley
+05495500,IL,Ohio Valley
+05501000,MO,Ohio Valley
+05503800,MO,Ohio Valley
+05507600,MO,Ohio Valley
+05508805,MO,Ohio Valley
+05514500,MO,Ohio Valley
+05525500,IL,Ohio Valley
+05556500,IL,Ohio Valley
+05584500,IL,Ohio Valley
+05585000,IL,Ohio Valley
+05591550,IL,Ohio Valley
+05592050,IL,Ohio Valley
+05592575,IL,Ohio Valley
+05593575,IL,Ohio Valley
+05593900,IL,Ohio Valley
+05595730,IL,Ohio Valley
+06037500,MT,Northern Rockies and Plains
+06043500,MT,Northern Rockies and Plains
+06154410,MT,Northern Rockies and Plains
+06188000,WY,Northern Rockies and Plains
+06191500,MT,Northern Rockies and Plains
+06221400,WY,Northern Rockies and Plains
+06224000,WY,Northern Rockies and Plains
+06278300,WY,Northern Rockies and Plains
+06280300,WY,Northern Rockies and Plains
+06289000,MT,Northern Rockies and Plains
+06291500,MT,Northern Rockies and Plains
+06311000,WY,Northern Rockies and Plains
+06332515,ND,Northern Rockies and Plains
+06339100,ND,Northern Rockies and Plains
+06339500,ND,Northern Rockies and Plains
+06344600,ND,Northern Rockies and Plains
+06350000,ND,Northern Rockies and Plains
+06352000,ND,Northern Rockies and Plains
+06353000,ND,Northern Rockies and Plains
+06354000,ND,Northern Rockies and Plains
+06360500,SD,Northern Rockies and Plains
+06404000,SD,Northern Rockies and Plains
+06406000,SD,Northern Rockies and Plains
+06408700,SD,Northern Rockies and Plains
+06409000,SD,Northern Rockies and Plains
+06431500,SD,Northern Rockies and Plains
+06440200,SD,Northern Rockies and Plains
+06441500,SD,Northern Rockies and Plains
+06447000,SD,Northern Rockies and Plains
+06447500,SD,Northern Rockies and Plains
+06450500,SD,Northern Rockies and Plains
+06452000,SD,Northern Rockies and Plains
+06453600,NE,Northern Rockies and Plains
+06464500,SD,Northern Rockies and Plains
+06477500,SD,Northern Rockies and Plains
+06479215,SD,Northern Rockies and Plains
+06479438,SD,Northern Rockies and Plains
+06601000,NE,Northern Rockies and Plains
+06614800,CO,Southwest
+06622700,WY,Northern Rockies and Plains
+06623800,WY,Northern Rockies and Plains
+06632400,WY,Northern Rockies and Plains
+06746095,CO,Southwest
+06784000,NE,Northern Rockies and Plains
+06803510,NE,Northern Rockies and Plains
+06803530,NE,Northern Rockies and Plains
+06814000,KS,South
+06846500,KS,South
+06847900,KS,South
+06853800,KS,South
+06876700,KS,South
+06878000,KS,South
+06879650,KS,South
+06885500,KS,South
+06888500,KS,South
+06889200,KS,South
+06889500,KS,South
+06892000,KS,South
+06903400,IA,Upper Midwest
+06906800,MO,Ohio Valley
+06910800,KS,South
+06911900,KS,South
+06917000,KS,South
+06918460,MO,Ohio Valley
+06919500,MO,Ohio Valley
+06921070,MO,Ohio Valley
+06921200,MO,Ohio Valley
+06934000,MO,Ohio Valley
+07014500,MO,Ohio Valley
+07056000,AR,South
+07057500,MO,Ohio Valley
+07060710,AR,South
+07066000,MO,Ohio Valley
+07067000,MO,Ohio Valley
+07068000,MO,Ohio Valley
+07071500,MO,Ohio Valley
+07083000,CO,Southwest
+07142300,KS,South
+07145700,KS,South
+07148400,OK,South
+07149000,KS,South
+07151500,KS,South
+07167500,KS,South
+07180500,KS,South
+07184000,KS,South
+07195800,AR,South
+07196900,AR,South
+07197000,OK,South
+07208500,NM,Southwest
+07226500,NM,Southwest
+07261000,AR,South
+07263295,AR,South
+07290650,MS,South
+07291000,MS,South
+07292500,MS,South
+07295000,MS,South
+07299670,TX,South
+07301410,TX,South
+07301500,OK,South
+07315200,TX,South
+07315700,OK,South
+07335700,OK,South
+07340300,AR,South
+07346045,TX,South
+07359610,AR,South
+07362100,AR,South
+07362587,AR,South
+07373000,LA,South
+07375000,LA,South
+07376000,LA,South
+08013000,LA,South
+08014500,LA,South
+08023080,LA,South
+08025500,LA,South
+08029500,TX,South
+08050800,TX,South
+08066200,TX,South
+08066300,TX,South
+08070000,TX,South
+08070200,TX,South
+08079600,TX,South
+08082700,TX,South
+08086212,TX,South
+08086290,TX,South
+08101000,TX,South
+08103900,TX,South
+08104900,TX,South
+08109700,TX,South
+08150800,TX,South
+08155200,TX,South
+08158700,TX,South
+08158810,TX,South
+08164000,TX,South
+08164300,TX,South
+08164600,TX,South
+08165300,TX,South
+08171300,TX,South
+08175000,TX,South
+08176900,TX,South
+08178880,TX,South
+08189500,TX,South
+08190000,TX,South
+08190500,TX,South
+08194200,TX,South
+08195000,TX,South
+08196000,TX,South
+08198500,TX,South
+08200000,TX,South
+08202700,TX,South
+08267500,NM,Southwest
+08269000,NM,Southwest
+08271000,NM,Southwest
+08324000,NM,Southwest
+08377900,NM,Southwest
+08378500,NM,Southwest
+08380500,NM,Southwest
+09034900,CO,Southwest
+09035800,CO,Southwest
+09035900,CO,Southwest
+09047700,CO,Southwest
+09065500,CO,Southwest
+09066000,CO,Southwest
+09066200,CO,Southwest
+09066300,CO,Southwest
+09081600,CO,Southwest
+09107000,CO,Southwest
+09210500,WY,Northern Rockies and Plains
+09223000,WY,Northern Rockies and Plains
+09306242,CO,Southwest
+09312600,UT,Southwest
+09352900,CO,Southwest
+09378170,UT,Southwest
+09378630,UT,Southwest
+09386900,NM,Southwest
+09404450,UT,Southwest
+09430500,NM,Southwest
+09430600,NM,Southwest
+09447800,AZ,Southwest
+09480000,AZ,Southwest
+09484000,AZ,Southwest
+09484600,AZ,Southwest
+09492400,AZ,Southwest
+09494000,AZ,Southwest
+09497800,AZ,Southwest
+09497980,AZ,Southwest
+09505200,AZ,Southwest
+09505350,AZ,Southwest
+09505800,AZ,Southwest
+09508300,AZ,Southwest
+09510200,AZ,Southwest
+09512280,AZ,Southwest
+09513780,AZ,Southwest
+10023000,UT,Southwest
+10166430,UT,Southwest
+10172700,UT,Southwest
+10172800,UT,Southwest
+10173450,UT,Southwest
+10205030,UT,Southwest
+10234500,UT,Southwest
+10242000,UT,Southwest
+10244950,NV,West
+10249300,NV,West
+10258000,CA,West
+10258500,CA,West
+10259000,CA,West
+10259200,CA,West
+10263500,CA,West
+10310500,NV,West
+10316500,NV,West
+10329500,NV,West
+10336645,CA,West
+10336660,CA,West
+10336740,NV,West
+10343500,CA,West
+10348850,NV,West
+10396000,OR,Northwest
+11098000,CA,West
+11124500,CA,West
+11141280,CA,West
+11143000,CA,West
+11148900,CA,West
+11151300,CA,West
+11162500,CA,West
+11176400,CA,West
+11180500,CA,West
+11180960,CA,West
+11224500,CA,West
+11230500,CA,West
+11237500,CA,West
+11253310,CA,West
+11264500,CA,West
+11266500,CA,West
+11274500,CA,West
+11274630,CA,West
+11284400,CA,West
+11299600,CA,West
+11381500,CA,West
+11383500,CA,West
+11451100,CA,West
+11468500,CA,West
+11473900,CA,West
+11475560,CA,West
+11476600,CA,West
+11478500,CA,West
+11480390,CA,West
+11481200,CA,West
+11482500,CA,West
+11522500,CA,West
+11523200,CA,West
+11528700,CA,West
+11532500,CA,West
+12010000,WA,Northwest
+12013500,WA,Northwest
+12020000,WA,Northwest
+12025000,WA,Northwest
+12025700,WA,Northwest
+12035000,WA,Northwest
+12040500,WA,Northwest
+12041200,WA,Northwest
+12043000,WA,Northwest
+12048000,WA,Northwest
+12054000,WA,Northwest
+12056500,WA,Northwest
+12073500,WA,Northwest
+12082500,WA,Northwest
+12092000,WA,Northwest
+12095000,WA,Northwest
+12114500,WA,Northwest
+12115000,WA,Northwest
+12115500,WA,Northwest
+12117000,WA,Northwest
+12141300,WA,Northwest
+12143600,WA,Northwest
+12144000,WA,Northwest
+12145500,WA,Northwest
+12147500,WA,Northwest
+12147600,WA,Northwest
+12167000,WA,Northwest
+12175500,WA,Northwest
+12178100,WA,Northwest
+12186000,WA,Northwest
+12189500,WA,Northwest
+12358500,MT,Northern Rockies and Plains
+12374250,MT,Northern Rockies and Plains
+12375900,MT,Northern Rockies and Plains
+12377150,MT,Northern Rockies and Plains
+12381400,MT,Northern Rockies and Plains
+12383500,MT,Northern Rockies and Plains
+12388400,MT,Northern Rockies and Plains
+12390700,MT,Northern Rockies and Plains
+12411000,ID,Northwest
+12414500,ID,Northwest
+12447390,WA,Northwest
+12451000,WA,Northwest
+12488500,WA,Northwest
+13011500,WY,Northern Rockies and Plains
+13011900,WY,Northern Rockies and Plains
+13018300,WY,Northern Rockies and Plains
+13023000,WY,Northern Rockies and Plains
+13083000,ID,Northwest
+13161500,NV,West
+13235000,ID,Northwest
+13240000,ID,Northwest
+13310700,ID,Northwest
+13313000,ID,Northwest
+13331500,OR,Northwest
+13337000,ID,Northwest
+13338500,ID,Northwest
+13340000,ID,Northwest
+13340600,ID,Northwest
+14020000,OR,Northwest
+14092750,OR,Northwest
+14096850,OR,Northwest
+14137000,OR,Northwest
+14138800,OR,Northwest
+14138870,OR,Northwest
+14138900,OR,Northwest
+14139800,OR,Northwest
+14141500,OR,Northwest
+14154500,OR,Northwest
+14158500,OR,Northwest
+14158790,OR,Northwest
+14166500,OR,Northwest
+14182500,OR,Northwest
+14185000,OR,Northwest
+14185900,OR,Northwest
+14187000,OR,Northwest
+14216500,WA,Northwest
+14222500,WA,Northwest
+14236200,WA,Northwest
+14301000,OR,Northwest
+14303200,OR,Northwest
+14305500,OR,Northwest
+14306340,OR,Northwest
+14306500,OR,Northwest
+14308990,OR,Northwest
+14309500,OR,Northwest
+14316700,OR,Northwest
+14325000,OR,Northwest
+14362250,OR,Northwest
+14400000,OR,Northwest

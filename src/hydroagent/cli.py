@@ -25,6 +25,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import config
+from .regions import load_regions
 
 
 def _load_env_file() -> None:
@@ -44,12 +45,10 @@ def _load_env_file() -> None:
 
 
 def _tasks():
-    from nwp2sf.basins import load_basins
-
     from . import camels, protocol
     d = camels.load()
     attrs = camels.attributes(d["ids"])
-    regions = load_basins(config.REPO / "data", include_excluded=True).region.reindex(d["ids"]).fillna("Other")
+    regions = load_regions(d["ids"])
     return d, attrs, regions, protocol.make_tasks(attrs, regions)
 
 
@@ -96,12 +95,10 @@ def _patch_opencode_adaptive(opencode_dir) -> bool:
 
 def cmd_dpl(a) -> int:
     """Differentiable parameter-learning baseline on the requested splits (CPU, no API calls)."""
-    from nwp2sf.basins import load_basins
-
     from . import camels, dpl
     d = camels.load()
     attrs = camels.attributes(d["ids"])
-    regions = load_basins(config.REPO / "data", include_excluded=True).region.reindex(d["ids"]).fillna("Other")
+    regions = load_regions(d["ids"])
     S = dpl.splits(attrs, regions)
     names = list(S) if a.splits == ["all"] else a.splits
     for name in names:
@@ -407,10 +404,9 @@ def _calib_report(task: str = "region-Southeast") -> dict:
         cf = config.RESULTS / (f"baselines_per_basin_{name}.csv" if name.startswith("region-") else "baselines_per_basin.csv")
         if name.startswith("region-") and not cf.is_file():
             if d is None:
-                from nwp2sf.basins import load_basins
                 d = camels.load()
                 attrs = camels.attributes(d["ids"])
-                regions = load_basins(config.REPO / "data", include_excluded=True).region.reindex(d["ids"]).fillna("Other")
+                regions = load_regions(d["ids"])
                 from .protocol import make_tasks
                 tasks = make_tasks(attrs, regions)
             t = tasks[name]
