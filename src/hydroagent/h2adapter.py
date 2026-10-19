@@ -73,6 +73,29 @@ def patch_claude() -> None:
     env._hydroagent = True
     P.Proposer.env = env
 
+    # keep each improver session's OpenCode event stream (harness2 only keeps the reply), so
+    # model turns and tool calls of the editor/composer/reflector can be counted afterwards
+    import subprocess as _sp
+    import time as _time
+    real_run = _sp.run
+
+    def run(cmd, *a, **kw):
+        res = real_run(cmd, *a, **kw)
+        try:
+            if isinstance(cmd, (list, tuple)) and "src/index.ts" in [str(c) for c in cmd] and \
+                    isinstance(getattr(res, "stdout", None), str):
+                d = config.RUNS / "_audit" / "events"
+                d.mkdir(parents=True, exist_ok=True)
+                cwd = Path(str(kw.get("cwd", "."))).name
+                (d / f"{_time.strftime('%Y%m%dT%H%M%S')}_{cwd}.jsonl").write_text(res.stdout)
+        except Exception:
+            pass
+        return res
+
+    P.subprocess = type("SubprocessProxy", (), {"run": staticmethod(run), "PIPE": _sp.PIPE,
+                                                "TimeoutExpired": _sp.TimeoutExpired,
+                                                "DEVNULL": _sp.DEVNULL})()
+
 
 def _clone_tree(src: Path, dst: Path) -> None:
     """Copy-on-write clone on APFS (instant, no extra space); plain copy elsewhere."""
