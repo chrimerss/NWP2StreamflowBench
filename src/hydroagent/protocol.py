@@ -65,6 +65,10 @@ def make_tasks(attrs: pd.DataFrame, regions: pd.Series, n_pilot: int = config.PI
         picked += members[:quota[r]]
     picked = sorted(picked)[:n_pilot] if len(picked) > n_pilot else sorted(picked)
     tasks[f"fold1-pilot{n_pilot}"] = Task(f"fold1-pilot{n_pilot}", tuple(picked), tasks["fold1"].donors)
+    for r in sorted(set(regions.reindex(ids).fillna("Other"))):
+        tg = tuple(sorted(i for i in ids if regions.get(i, "Other") == r))
+        dn = tuple(sorted(i for i in ids if regions.get(i, "Other") != r))
+        tasks["region-" + r.replace(" ", "-")] = Task("region-" + r.replace(" ", "-"), tg, dn)
     return tasks
 
 

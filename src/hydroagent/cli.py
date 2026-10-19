@@ -2,6 +2,7 @@
 
     hydroagent setup                       pinned OpenCode executor (via harness2's installer)
     hydroagent prepare                     CAMELS record, attributes, folds, baselines, task folders
+    hydroagent dpl --splits region-Southeast   differentiable parameter-learning baseline (CPU)
     hydroagent check                       credentials, OpenCode, task folders (no model call)
     hydroagent run --task fold1-pilot30 --k 1 --mode parallel [--executor M] [--improver M]
     hydroagent evaluate --task fold1-pilot30   score every rollout against USGS; compare with baselines
@@ -93,6 +94,29 @@ def _patch_opencode_adaptive(opencode_dir) -> bool:
     return True
 
 
+def cmd_dpl(a) -> int:
+    """Differentiable parameter-learning baseline on the requested splits (CPU, no API calls)."""
+    from nwp2sf.basins import load_basins
+
+    from . import camels, dpl
+    d = camels.load()
+    attrs = camels.attributes(d["ids"])
+    regions = load_basins(config.REPO / "data", include_excluded=True).region.reindex(d["ids"]).fillna("Other")
+    S = dpl.splits(attrs, regions)
+    names = list(S) if a.splits == ["all"] else a.splits
+    for name in names:
+        if (config.RESULTS / "dpl" / f"{name}_test.csv").is_file() and not a.force:
+            print(f"{name}: done already")
+            continue
+        s = S[name]
+        got = dpl.run_split(d, attrs, s["train"], s["test"], iters=a.iters, threads=a.threads, seed=a.seed,
+                            log=lambda m, n=name: print(f"[{n}] {m}", flush=True))
+        dpl.save(name, s["kind"], got)
+        print(f"{name}: test median NSE {got['test'].nse.median():.3f} KGE {got['test'].kge.median():.3f} "
+              f"(best iter {got['best_iter']}, {got['wall_s']} s)", flush=True)
+    return 0
+
+
 def cmd_prepare(a) -> int:
     import numpy as np
 
@@ -118,9 +142,15 @@ def cmd_prepare(a) -> int:
     allres = {m: g.set_index("gauge_id")[["nse", "kge"]] for m, g in per.groupby("method")}
     baselines.summary(allres).to_csv(config.RESULTS / "baselines_summary_all.csv", float_format="%.4f")
     for tid in (a.tasks or [f"fold1-pilot{config.PILOT_TARGETS}"]):
-        workspace.build(tasks[tid], d, attrs, force=a.force)
-        workspace.brief(tid)
-        sub = {m: r.reindex(list(tasks[tid].targets)) for m, r in allres.items()}
+        workspace.build(tasks[tid], d, attrs, force=a.force, released=(a.variant == "template"), variant=a.variant)
+        workspace.brief(tid, a.variant)
+        if tid.startswith("region-"):          # classical transfer from the other regions' donors
+            res = baselines.run(d, attrs, list(tasks[tid].targets), list(tasks[tid].donors))
+            pd.concat([r.assign(method=m) for m, r in res.items()]).to_csv(
+                config.RESULTS / f"baselines_per_basin_{tid}.csv", float_format="%.4f")
+            sub = res
+        else:
+            sub = {m: r.reindex(list(tasks[tid].targets)) for m, r in allres.items()}
         baselines.summary(sub).to_csv(config.RESULTS / f"baselines_summary_{tid}.csv", float_format="%.4f")
         print(f"task {tid}: {len(tasks[tid].targets)} targets, {len(tasks[tid].donors)} donors")
     print(baselines.summary(allres).round(3).to_string())
@@ -137,7 +167,7 @@ def cmd_check(a) -> int:
     if not h2c.BUN.is_file() or not (h2c.OPENCODE_DIR / "node_modules").is_dir():
         problems.append(f"OpenCode/bun missing under {h2c.DEPENDENCIES}; see docs/hydroagent.md")
     for tid in a.task:
-        if not (config.TASKS / tid / "template" / "task_folder" / "data" / "donors.npz").is_file():
+        if not (config.TASKS / tid / a.variant / "task_folder" / "data" / "donors.npz").is_file():
             problems.append(f"task folder for {tid} missing; run `hydroagent prepare`")
     print(f"executor={h2c.SOLVER_MODEL_OC} improver={h2c.IMPROVER_MODEL} runs={config.RUNS}")
     for p in problems:
@@ -159,7 +189,7 @@ def cmd_run(a) -> int:
     from .h2adapter import HydroAdapter
     if not a.offline and cmd_check(a) != 0:
         return 1
-    adapter = HydroAdapter(a.task, timeout=a.timeout, fake_executor=a.offline)
+    adapter = HydroAdapter(a.task, timeout=a.timeout, fake_executor=a.offline, variant=a.variant)
     if a.offline:
         from .offline import ScriptedProposer
         prop = ScriptedProposer(adapter.spec.channels["proposer"])
@@ -194,7 +224,7 @@ def cmd_evaluate(a) -> int:
     runs = config.RUNS / "offline" if a.offline else config.RUNS
     config.RUNS = runs
     from .h2adapter import HydroAdapter
-    adapter = HydroAdapter(a.task)
+    adapter = HydroAdapter(a.task, variant=a.variant)
     rows, per = [], []
     for tid in a.task:
         chosen = {}
@@ -205,7 +235,7 @@ def cmd_evaluate(a) -> int:
                     chosen[sel["chosen_run_id"]] = mode
         for rj in sorted((runs / "rollouts").rglob("rollout.json")):
             meta = json.loads(rj.read_text())
-            if meta.get("task_id") != tid:
+            if meta.get("task_id") != tid or meta["run_id"].split("/")[0].startswith("camels-calib") != (a.variant == "calib"):
                 continue
             got = adapter.score(rj.parent, tid) if adapter.delivered(rj.parent) else None
             label = meta["run_id"].rsplit("/", 1)[-1]
@@ -226,14 +256,20 @@ def cmd_evaluate(a) -> int:
         df["note"] = ["base-harness replicate (improver fell back)" if any(f.endswith(":" + r["label"]) for f in fell)
                       else "" for r in rows]
         print("WARNING: stages that fell back to the base harness:", ", ".join(fell))
-    out = config.RESULTS / ("offline" if a.offline else "")
+    out = config.RESULTS / ("offline" if a.offline else "") / ("" if a.variant == "template" else a.variant)
     out.mkdir(parents=True, exist_ok=True)
     df.to_csv(out / "agent_rollouts.csv", index=False, float_format="%.4f")
     pd.DataFrame(per).to_csv(out / "agent_per_basin.csv", index=False, float_format="%.4f")
     for tid in a.task:
-        b = pd.read_csv(config.RESULTS / f"baselines_summary_{tid}.csv", index_col=0)
-        print(f"\n== {tid}: baselines (median test NSE / KGE) ==")
-        print(b[["nse_median", "kge_median"]].round(3).to_string())
+        bf = config.RESULTS / f"baselines_summary_{tid}.csv"
+        if bf.is_file():
+            b = pd.read_csv(bf, index_col=0)
+            print(f"\n== {tid}: classical baselines (median test NSE / KGE) ==")
+            print(b[["nse_median", "kge_median"]].round(3).to_string())
+        df_ = config.RESULTS / "dpl" / f"{tid}_test.csv"
+        if df_.is_file():
+            g = pd.read_csv(df_)
+            print(f"== {tid}: differentiable parameter learning: NSE {g.nse.median():.3f} / KGE {g.kge.median():.3f}")
     print("\n== agent rollouts ==")
     print(df.drop(columns=["run_id"]).to_string(index=False) if len(df) else "(none)")
     return 0
@@ -316,8 +352,16 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("setup").set_defaults(fn=cmd_setup)
+    p = sub.add_parser("dpl", help="differentiable parameter-learning baseline")
+    p.add_argument("--splits", nargs="+", default=["all"])
+    p.add_argument("--iters", type=int, default=500)
+    p.add_argument("--threads", type=int, default=8)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(fn=cmd_dpl)
     p = sub.add_parser("prepare")
     p.add_argument("--tasks", nargs="*")
+    p.add_argument("--variant", choices=("template", "calib"), default="template")
     p.add_argument("--force", action="store_true")
     p.set_defaults(fn=cmd_prepare)
     for name, fn in (("check", cmd_check), ("run", cmd_run), ("evaluate", cmd_evaluate), ("report", cmd_report)):
@@ -329,6 +373,8 @@ def main(argv=None) -> int:
         p.add_argument("--mode", choices=("parallel", "sequential", "both"), default="parallel")
         p.add_argument("--timeout", type=int, default=5400, help="seconds per executor rollout")
         p.add_argument("--offline", action="store_true")
+        p.add_argument("--variant", choices=("template", "calib"), default="template",
+                       help="template: donors with released parameters (pilot); calib: agent calibrates")
         p.set_defaults(fn=fn)
     a = ap.parse_args(argv)
     return a.fn(a)

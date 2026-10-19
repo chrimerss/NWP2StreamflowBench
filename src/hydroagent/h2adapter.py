@@ -93,7 +93,10 @@ class HydroAdapter:
     """BenchmarkAdapter for ``fold<k>`` / ``fold1-pilot<n>`` tasks over CAMELS-US."""
 
     def __init__(self, task_ids: list[str], *, timeout: int = 5400, steps: int = 250,
-                 network_fence: bool = True, fake_executor: bool = False):
+                 network_fence: bool = True, fake_executor: bool = False, variant: str = "template"):
+        """``variant="template"``: donors come with released parameters (pilot design).
+        ``variant="calib"``: no pre-calibrated parameters; the agent calibrates the training gauges."""
+        self.variant = variant
         from harness2 import config as h2c
         from harness2.core.spec import BenchPrompts, BenchSpec, resolve_channel_model
         from harness2.substrate.opencode import OpencodeSubstrate
@@ -108,7 +111,7 @@ class HydroAdapter:
         self.rollouts = config.RUNS / "rollouts"
         ch = resolve_channel_model("opencode", h2c.IMPROVER_MODEL, effort="high")
         self.spec = BenchSpec(
-            name="camels",
+            name="camels" if variant == "template" else "camels-calib",
             runs_root=config.RUNS,
             install_mode="workspace_agents_md",
             prompts=BenchPrompts(
@@ -141,20 +144,20 @@ class HydroAdapter:
         return "camels-us"
 
     def task_prompt(self, task_id: str) -> str:
-        return (config.TASKS / task_id / "template" / "TASK.md").read_text()
+        return (config.TASKS / task_id / self.variant / "TASK.md").read_text()
 
     def task_files(self, task_id: str) -> Path:
         from .workspace import brief
-        return brief(task_id)
+        return brief(task_id, self.variant)
 
     def _template(self, task_id: str) -> Path:
-        t = config.TASKS / task_id / "template"
+        t = config.TASKS / task_id / self.variant
         if not (t / "task_folder" / "data" / "donors.npz").is_file():
             raise FileNotFoundError(f"task template missing: {t}; run `hydroagent prepare`")
         return t
 
     def base_harness(self) -> Path:
-        return Path(__file__).parent / "harness_base"
+        return Path(__file__).parent / ("harness_base" if self.variant == "template" else "harness_calib")
 
     def validate_tree(self, tree: dict) -> None:
         g = tree.get("guardrails.md", "")
@@ -280,7 +283,7 @@ class HydroAdapter:
 
     # ------------------------------------------------------------------ artifacts
     def _targets(self, task_id: str) -> list[str]:
-        return list(pd.read_csv(config.TASKS / task_id / "template" / "task_folder" / "data" /
+        return list(pd.read_csv(config.TASKS / task_id / self.variant / "task_folder" / "data" /
                                 "target_attributes.csv").id)
 
     def _read_q(self, run_dir: Path) -> Optional[pd.DataFrame]:
@@ -360,8 +363,12 @@ class HydroAdapter:
         sim = q.reindex(dates[w])[targets].values
         r = pd.DataFrame({"nse": nse(sim, obs), "kge": kge(sim, obs)}, index=pd.Index(targets, name="id"))
         r["gauge_id"] = [mapping[t] for t in targets]
-        ref = pd.read_csv(config.RESULTS / "baselines_per_basin.csv", dtype={"gauge_id": str})
-        knn = ref[ref.method == "knn_attr"].set_index("gauge_id").nse.reindex(r.gauge_id).values
+        dplf = config.RESULTS / "dpl" / f"{task_id}_test.csv"
+        if self.variant != "template" and dplf.is_file():     # compare with the differentiable baseline
+            knn = pd.read_csv(dplf, dtype={"gauge_id": str}).set_index("gauge_id").nse.reindex(r.gauge_id).values
+        else:
+            ref = pd.read_csv(config.RESULTS / "baselines_per_basin.csv", dtype={"gauge_id": str})
+            knn = ref[ref.method == "knn_attr"].set_index("gauge_id").nse.reindex(r.gauge_id).values
         audit = json.loads((Path(run_dir) / "rollout.json").read_text()).get("audit", {}) \
             if (Path(run_dir) / "rollout.json").is_file() else {}
         return {"nse_median": float(np.nanmedian(r.nse)), "kge_median": float(np.nanmedian(r.kge)),

@@ -88,9 +88,63 @@ def _anon_attrs(attrs: pd.DataFrame, ids, labels) -> pd.DataFrame:
     return a
 
 
-def build(task: Task, data: dict, attrs: pd.DataFrame, force: bool = False) -> Path:
-    """Write the template folder and the hidden mapping; return the template path."""
-    root = config.TASKS / task.task_id / "template"
+TASK_MD_CALIB = """# Calibrate dCREST on gauged catchments and predict {n_targets} out-of-distribution catchments
+
+You are a hydrologist. `task_folder/data/` describes {n_donors} *training* catchments with
+streamflow observations and {n_targets} *target* catchments with meteorological forcing and
+static attributes but **no streamflow record**. {split_note}
+
+Calibrate the dCREST rainfall-runoff model (`./dcrest`, a differentiable PyTorch
+implementation of CREST) on the training catchments over {obs0}..{obs1}, and use what you
+learn to produce daily discharge for every target. No pre-calibrated parameters are given:
+the calibration is yours. You may calibrate catchment by catchment, jointly across
+catchments, learn a mapping from attributes to parameters, ensemble, and change the model
+structure in `./dcrest`, as long as your choices are supported by evidence you generate
+from the training catchments (for example by holding some of them out).
+
+Your predictions will be compared with observed discharge over {pred0}..{pred1}, a period
+in which no discharge is given for any catchment.
+
+## Data (`task_folder/data/`)
+- `donors.npz` (the training catchments): `ids`, `dates` (daily 1980-01-01..2014-12-31),
+  `P` precipitation [mm/day], `T` mean air temperature [degC], `PET` Oudin potential ET
+  [mm/day], `Q_obs` discharge [mm/day] (NaN outside {obs0}..{obs1} and where missing),
+  `area_km2`, `lat`, `lon` (rounded to 0.1 deg). Arrays are (days, catchments).
+- `targets.npz`: the same without `Q_obs`.
+- `donor_attributes.csv`, `target_attributes.csv`: CAMELS topography, climate, soil,
+  vegetation and geology attributes.
+- `meta.json`: windows, parameter names and bounds, routing settings.
+
+## Deliverables (`output/`)
+1. `output/target_discharge.csv` - column `date` plus one column per target id
+   ({first_target}..{last_target}); daily discharge in mm/day, non-negative, covering at
+   least {pred0}..{pred1}.
+2. `output/method.md` - calibration and transfer approach, the hold-out design and its
+   numbers, and what you would try next.
+3. `output/code/` - the scripts that regenerate `target_discharge.csv` from the data.
+
+## Model spin-up
+Start every simulation from dcrest's default initial states three years before the
+window you use: {spin_pred} for the prediction window, {spin_obs} for the observation
+window. Much longer spin-ups move slow aquifer states and can badly degrade some
+catchments. `scripts/hydrokit.py` follows this rule by default.
+
+## Compute
+CPU only. One gradient step of dCREST over the 12-year calibration window costs about
+4 s whatever the number of catchments, so calibrate many catchments in one batch and run
+long calibrations in the background with a log. Write a first valid
+`target_discharge.csv` early, then improve it.
+"""
+
+
+def build(task: Task, data: dict, attrs: pd.DataFrame, force: bool = False, released: bool = True,
+          variant: str = "template") -> Path:
+    """Write the task folder and the hidden mapping; return its path.
+
+    ``released=False`` builds the calibration variant: no pre-calibrated parameters and
+    the TASK_MD_CALIB assignment.
+    """
+    root = config.TASKS / task.task_id / variant
     if root.exists() and not force:
         return root
     shutil.rmtree(root, ignore_errors=True)
@@ -122,9 +176,10 @@ def build(task: Task, data: dict, attrs: pd.DataFrame, force: bool = False) -> P
 
     params, meta = dcrest.load_parameters(str(config.PARAMS), subset=list(task.donors))
     keys = [k for k in params if k != "area_km2"]
-    rel = pd.DataFrame({k: params[k].numpy() for k in keys + ["area_km2"]},
-                       index=pd.Index([labels[g] for g in task.donors], name="id"))
-    rel.to_csv(dd / "donor_params_released.csv", float_format="%.6g")
+    if released:
+        rel = pd.DataFrame({k: params[k].numpy() for k in keys + ["area_km2"]},
+                           index=pd.Index([labels[g] for g in task.donors], name="id"))
+        rel.to_csv(dd / "donor_params_released.csv", float_format="%.6g")
     (dd / "meta.json").write_text(json.dumps({
         "obs_window": list(config.TRAIN), "spinup_from": config.TRAIN_SPINUP_FROM,
         "predict_window": list(config.TEST), "predict_spinup_from": config.TEST_SPINUP_FROM,
@@ -136,10 +191,14 @@ def build(task: Task, data: dict, attrs: pd.DataFrame, force: bool = False) -> P
     shutil.copytree(Path(dcrest.__file__).parent, root / "dcrest",
                     ignore=shutil.ignore_patterns("__pycache__", "VENDORED.md"))
     tg = sorted(labels[g] for g in task.targets)
-    (root / "TASK.md").write_text(TASK_MD.format(
+    note = ("The targets lie in a climate region that contains no training catchment."
+            if task.task_id.startswith("region-") else
+            "The targets are interspersed with the training catchments across the country.")
+    tmpl = TASK_MD if released else TASK_MD_CALIB
+    (root / "TASK.md").write_text(tmpl.format(
         n_targets=len(task.targets), n_donors=len(task.donors), obs0=config.TRAIN[0], obs1=config.TRAIN[1],
         pred0=config.TEST[0], pred1=config.TEST[1], first_target=tg[0], last_target=tg[-1],
-        spin_pred=config.TEST_SPINUP_FROM, spin_obs=config.TRAIN_SPINUP_FROM))
+        spin_pred=config.TEST_SPINUP_FROM, spin_obs=config.TRAIN_SPINUP_FROM, split_note=note))
     shutil.copy(root / "TASK.md", root / "task_folder" / "TASK.md")
 
     hidden = config.HIDDEN / task.task_id
@@ -149,10 +208,10 @@ def build(task: Task, data: dict, attrs: pd.DataFrame, force: bool = False) -> P
     return root
 
 
-def brief(task_id: str) -> Path:
+def brief(task_id: str, variant: str = "template") -> Path:
     """Small, text-only copy of the task for the harness improver (no arrays)."""
-    root = config.TASKS / task_id / "template"
-    b = config.TASKS / task_id / "brief"
+    root = config.TASKS / task_id / variant
+    b = config.TASKS / task_id / f"brief-{variant}"
     if not b.exists():
         (b / "data").mkdir(parents=True)
         shutil.copy(root / "TASK.md", b / "TASK.md")

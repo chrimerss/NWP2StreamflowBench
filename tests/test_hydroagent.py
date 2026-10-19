@@ -76,3 +76,25 @@ def test_offline_validation_rejects_dropping_the_internet_rule():
     with pytest.raises(ValueError):
         a.validate_tree({"guardrails.md": "- Be careful."})
     a.validate_tree({"guardrails.md": "- Do not download data from the internet."})
+
+
+CALIB = config.TASKS / "region-Southeast" / "calib"
+
+
+@pytest.mark.skipif(not (CALIB / "task_folder" / "data" / "donors.npz").is_file(), reason="calib task not built")
+def test_calib_variant_has_no_precalibrated_parameters():
+    from hydroagent.h2adapter import HydroAdapter, configure
+
+    configure()
+    files = {p.name for p in (CALIB / "task_folder" / "data").iterdir()}
+    assert "donor_params_released.csv" not in files
+    assert "No pre-calibrated parameters" in (CALIB / "TASK.md").read_text()
+    a = HydroAdapter(["region-Southeast"], variant="calib")
+    assert a.base_harness().name == "harness_calib" and a.spec.name == "camels-calib"
+    assert "released" not in (a.base_harness() / "systemprompt.md").read_text()
+    # targets all in the held-out region, donors in none of it
+    from nwp2sf.basins import load_basins
+    reg = load_basins(config.REPO / "data", include_excluded=True).region
+    mapping = json.loads((config.HIDDEN / "region-Southeast" / "mapping.json").read_text())
+    assert {reg[g] for t, g in mapping.items() if t.startswith("T")} == {"Southeast"}
+    assert "Southeast" not in {reg[g] for t, g in mapping.items() if t.startswith("D")}
