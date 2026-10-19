@@ -7,6 +7,7 @@
     hydroagent run --task fold1-pilot30 --k 1 --mode parallel [--executor M] [--improver M]
     hydroagent evaluate --task fold1-pilot30   score every rollout against USGS; compare with baselines
     hydroagent report                      write docs/data/hydroagent.json for the dashboard tab
+    hydroagent replicate --harness L=PATH ...   extra executor rollouts of given harness trees
     hydroagent run ... --offline           scripted executor and editor: end-to-end pipeline test, no API calls
 
 Models use OpenCode's provider/model ids, e.g. anthropic/claude-sonnet-5-5. The
@@ -112,6 +113,39 @@ def cmd_dpl(a) -> int:
         print(f"{name}: test median NSE {got['test'].nse.median():.3f} KGE {got['test'].kge.median():.3f} "
               f"(best iter {got['best_iter']}, {got['wall_s']} s)", flush=True)
     return 0
+
+
+def cmd_replicate(a) -> int:
+    """Extra executor rollouts of given harness trees: --harness label=/path/to/harness ... --n 2 --start 2.
+
+    Rollouts land in runs/rollouts/replicates/<task>/<label>/r<i>; each records its harness path."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from .h2adapter import configure, patch_claude
+    configure(a.executor, a.improver)
+    patch_claude()
+    from .h2adapter import HydroAdapter
+    task = a.task[0]
+    adapter = HydroAdapter([task], timeout=a.timeout, variant=a.variant)
+    jobs = []
+    for spec in a.harness:
+        label, _, path = spec.partition("=")
+        hdir = None if path in ("", "base") else Path(path).expanduser()
+        if hdir is not None and not hdir.is_dir():
+            raise SystemExit(f"harness not found: {hdir}")
+        jobs += [(label, hdir, f"replicates/{task}/{label}/r{i}") for i in range(a.start, a.start + a.n)]
+    print(f"{len(jobs)} rollouts with {a.workers} workers, executor {os.environ.get('HARNESS2_SOLVER_MODEL')}", flush=True)
+    failed = 0
+    with ThreadPoolExecutor(max_workers=a.workers) as ex:
+        futs = {ex.submit(adapter.execute, task, h, rid): rid for _, h, rid in jobs}
+        for f in as_completed(futs):
+            try:
+                rd = f.result()
+                print(f"done {futs[f]} delivered={adapter.delivered(rd)}", flush=True)
+            except Exception as e:
+                failed += 1
+                print(f"FAILED {futs[f]}: {type(e).__name__}: {e}", flush=True)
+    return int(failed > 0)
 
 
 def cmd_prepare(a) -> int:
@@ -479,7 +513,8 @@ def main(argv=None) -> int:
     p.add_argument("--variant", choices=("template", "calib"), default="template")
     p.add_argument("--force", action="store_true")
     p.set_defaults(fn=cmd_prepare)
-    for name, fn in (("check", cmd_check), ("run", cmd_run), ("evaluate", cmd_evaluate), ("report", cmd_report)):
+    for name, fn in (("check", cmd_check), ("run", cmd_run), ("evaluate", cmd_evaluate), ("report", cmd_report),
+                     ("replicate", cmd_replicate)):
         p = sub.add_parser(name)
         p.add_argument("--task", nargs="+", default=[f"fold1-pilot{config.PILOT_TARGETS}"])
         p.add_argument("--executor")
@@ -490,6 +525,11 @@ def main(argv=None) -> int:
         p.add_argument("--offline", action="store_true")
         p.add_argument("--variant", choices=("template", "calib"), default="template",
                        help="template: donors with released parameters (pilot); calib: agent calibrates")
+        if name == "replicate":
+            p.add_argument("--harness", nargs="+", required=True, help="label=/path/to/harness (or label=base)")
+            p.add_argument("--n", type=int, default=2)
+            p.add_argument("--start", type=int, default=2)
+            p.add_argument("--workers", type=int, default=1)
         p.set_defaults(fn=fn)
     a = ap.parse_args(argv)
     return a.fn(a)
