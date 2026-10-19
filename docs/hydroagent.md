@@ -98,6 +98,38 @@ sessions (Claude Opus 5.5).
   attempts where the base harness used one. A k=10 sequential run with Claude Sonnet 5.5
   (in progress) adds ten base-harness replicates and ten optimization rounds.
 
+### More rounds: k=10 sequential with Claude Sonnet 5.5 (stopped after round 3)
+
+Same Southeast task, both roles on Claude Sonnet 5.5 (half the Opus price per token).
+Sequential mode refines the previous round's composed harness each round. An early-stop rule
+ended the run after three successive rounds in which the composed harness failed to beat the
+best so far by more than the base-harness spread (δ = 0.017 median NSE).
+
+| | median NSE |
+|---|---|
+| Ten base-harness runs | 0.531–0.587 (mean 0.559, sd 0.017) |
+| Round 1: general / domain / composed | 0.552 / 0.539 / 0.553 |
+| Round 2: general / domain / composed | 0.555 / 0.510 / 0.555 |
+| Round 3: general / domain / composed | 0.555 / 0.580 / 0.540 |
+| Differentiable baseline, 3-seed ensemble | 0.559 |
+
+* **No gain from more rounds with Sonnet.** The Sonnet base harness already matches the
+  baseline ensemble on average; no refined harness beat it significantly, and one domain
+  candidate was significantly worse (round 2, p = 0.002).
+* **Why: the harness converged and stopped exploring.** Each round Harness² wrote more of the
+  procedure into scripts (`attrs.py`, `deliverable.py`, then `jobs.py` and `schemes.py`) and
+  the always-on text grew from 3.3k to 6.3k characters. From round 2 the agent mostly
+  re-ran the scripted pipeline in 13–15 turns, and three runs produced byte-identical
+  predictions. Harness² locked in the first workable procedure rather than a good one.
+* **Run-to-run noise matters.** The ten base runs span 0.056 in median NSE, about as wide as
+  every harness effect measured here, so single-rollout comparisons (as at k=1) are fragile.
+* **Opus vs Sonnet.** The Opus k=1 candidates (0.585–0.607) sit at or above the best of the
+  ten Sonnet base runs, but the comparison mixes model and harness, so it does not show
+  which role made the difference.
+* **Cost and time.** $43.0 in total ($25.0 for 19 agent runs, $14.1 for 9 Harness²
+  sessions, $4.0 lost to runs cut short by OpenCode's doom-loop guard before it was
+  disabled), 12.7 hours.
+
 ### Differentiable baseline on every split (median test NSE of held-out basins)
 
 | Split | Kind | Held out | Baseline (single seed) | Released calibrations + attribute transfer | Gauged upper bound |

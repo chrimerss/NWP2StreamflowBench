@@ -72,6 +72,12 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   <div id="calibecdf" class="chart" style="min-height:380px"></div>
 </div>
 
+
+<div class="card" id="k10card" hidden>
+  <h2>More optimization rounds: k=10 sequential with Claude Sonnet 5.5</h2>
+  <p class="desc" id="k10desc"></p>
+  <div id="k10chart" class="chart" style="min-height:360px"></div>
+</div>
 <div class="card">
   <h2>Differentiable baseline across splits</h2>
   <p class="desc">Median test NSE on the held-out basins of every split. Random folds hold out basins interspersed with the training gauges; leave-region-out splits hold out a whole NOAA climate region. The reference column transfers the released per-basin calibrations by attribute similarity; the agent only ran on the split marked with ●.</p>
@@ -205,6 +211,32 @@ footer ul { padding-left: 18px; margin: 4px 0; }
     Plotly.react('calibecdf', et2, layout({margin: {l: 52, r: 16, t: 10, b: 150}, showlegend: true, legend: {orientation: 'h', y: -0.42, x: 0},
       xaxis: {range: [-1, 1], title: 'Test NSE (held-out region)', gridcolor: css('--grid'), zeroline: false, tickfont: {color: css('--muted')}},
       yaxis: {range: [0, 1], tickformat: '.0%', title: 'Share of basins', gridcolor: css('--grid'), tickfont: {color: css('--muted')}}, hovermode: 'closest'}), cfg);
+
+    // ---- k=10 sequential run ----
+    const K = C.k10 || {};
+    if (K.rounds && K.rounds.length) {
+      document.getElementById('k10card').hidden = false;
+      const nr = Math.max(...K.rounds.map(r => r.round));
+      document.getElementById('k10desc').textContent =
+        `Same task, both roles on Claude Sonnet 5.5. Ten base-harness runs give median NSE ${fmt(Math.min(...K.base.map(b => b.nse)))}–${fmt(Math.max(...K.base.map(b => b.nse)))} (mean ${fmt(K.base_mean)}, sd ${fmt(K.base_sd)}). ` +
+        `Each round refines the previous round's composed harness. The run was stopped ${K.stopped ? K.stopped.replace('after round', 'after round') : ''}: no composed harness beat the base mean by more than the base spread. ` +
+        `Harness² progressively wrote the procedure into scripts, and later runs re-executed it (identical outputs in rounds 2–3), so exploration collapsed.`;
+      const tr = [];
+      tr.push({x: [-0.3, nr + 0.3], y: [K.base_mean + K.delta, K.base_mean + K.delta], mode: 'lines', line: {width: 0}, hoverinfo: 'skip', showlegend: false});
+      tr.push({x: [-0.3, nr + 0.3], y: [K.base_mean - K.delta, K.base_mean - K.delta], mode: 'lines', line: {width: 0}, fill: 'tonexty', fillcolor: 'rgba(137,135,129,0.15)', name: 'base mean ± sd', hoverinfo: 'skip'});
+      tr.push({x: K.base.map((_, i) => -0.15 + 0.3 * i / Math.max(1, K.base.length - 1)), y: K.base.map(b => b.nse), mode: 'markers', name: 'base-harness runs', marker: {size: 8, color: css('--s2'), line: {color: css('--surface'), width: 2}}, hovertemplate: '<b>%{y:.3f}</b> base run<extra></extra>'});
+      const comp = K.rounds.filter(r => r.kind === 'composed');
+      tr.push({x: [0, ...comp.map(r => r.round)], y: [K.base_mean, ...comp.map(r => r.nse)], mode: 'lines+markers', name: 'composed harness (carried forward)', line: {color: css('--s1'), width: 2}, marker: {size: 9, color: css('--s1'), line: {color: css('--surface'), width: 2}}, hovertemplate: '<b>%{y:.3f}</b> round %{x}<extra></extra>'});
+      [['general', '--s4', 'general-edit probe'], ['domain', '--s5', 'domain-edit probe']].forEach(([k, c, nm]) => {
+        const rr = K.rounds.filter(r => r.kind === k);
+        tr.push({x: rr.map(r => r.round + (k === 'general' ? -0.08 : 0.08)), y: rr.map(r => r.nse), mode: 'markers', name: nm, marker: {size: 8, symbol: 'diamond', color: css(c)}, hovertemplate: `<b>%{y:.3f}</b> ${nm}<extra></extra>`});
+      });
+      const refv = st[C.reference || 'dpl'].nse_median;
+      tr.push({x: [-0.3, nr + 0.3], y: [refv, refv], mode: 'lines', name: 'differentiable baseline (3-seed ensemble)', line: {color: css('--s3'), width: 2, dash: 'dash'}, hoverinfo: 'skip'});
+      Plotly.react('k10chart', tr, layout({margin: {l: 52, r: 16, t: 10, b: 110}, showlegend: true, legend: {orientation: 'h', y: -0.3, x: 0}, hovermode: 'closest',
+        xaxis: {title: 'Optimization round (0 = base harness)', dtick: 1, range: [-0.4, nr + 0.4], gridcolor: css('--grid'), zeroline: false, tickfont: {color: css('--muted')}},
+        yaxis: {title: 'Median test NSE (126 basins)', gridcolor: css('--grid'), tickfont: {color: css('--muted')}}}), cfg);
+    }
     const sp = document.getElementById('splits');
     const sh = sp.createTHead().insertRow();
     ['Split', 'Kind', 'Held-out basins', 'Differentiable baseline NSE', 'Baseline KGE', 'Reference transfer NSE', 'Gauged upper bound NSE'].forEach(t => { const th = document.createElement('th'); th.textContent = t; sh.appendChild(th); });

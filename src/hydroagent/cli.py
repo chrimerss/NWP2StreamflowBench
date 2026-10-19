@@ -378,7 +378,7 @@ def _calib_report(task: str = "region-Southeast") -> dict:
     ag = config.RESULTS / "calib" / "agent_per_basin.csv"
     if ag.is_file():
         a = pd.read_csv(ag, dtype={"gauge_id": str})
-        a = a[a.task == task]
+        a = a[(a.task == task) & a.run_id.str.startswith("camels-calib-oc-agg1/")]     # Opus k=1 run
         a["label"] = a.run_id.str.rsplit("/", n=1).str[-1]
         for lab, g in a.groupby("label"):
             series["agent_base" if lab == "base1" else f"agent_{lab}"] = g.set_index("gauge_id").reindex(ids)
@@ -398,6 +398,7 @@ def _calib_report(task: str = "region-Southeast") -> dict:
             st["p_nse_vs_base"] = float(wilcoxon(g.nse, series["agent_base"].nse, nan_policy="omit").pvalue)
         out["stats"][k] = st
     out["dpl_seeds"] = [round(float(x.nse.median()), 4) for x in seeds]
+    out["k10"] = _k10_report(task, ids, ref)
     out["n_train"] = len(json.loads((config.HIDDEN / task / "task.json").read_text())["donors"])
     # baseline across every split
     d = None
@@ -424,6 +425,39 @@ def _calib_report(task: str = "region-Southeast") -> dict:
         for m in ("knn_attr", "gauged_upper"):
             row[f"{m}_nse"] = round(float(c2[c2.method == m].nse.median()), 4)
         out["splits"].append(row)
+    return out
+
+
+def _k10_report(task: str, ids, ref) -> dict:
+    """Sequential k=10 run (Claude Sonnet 5.5): base-harness replicates and skill by round."""
+    import numpy as np
+    from scipy.stats import wilcoxon
+    ag = config.RESULTS / "calib" / "agent_per_basin.csv"
+    if not ag.is_file():
+        return {}
+    a = pd.read_csv(ag, dtype={"gauge_id": str})
+    a = a[(a.task == task) & a.run_id.str.contains(r"-(?:agg|seq)10/")]
+    if a.empty:
+        return {}
+    a["label"] = a.run_id.str.rsplit("/", n=1).str[-1]
+    out = {"model": "anthropic/claude-sonnet-5-5", "base": [], "rounds": []}
+    for lab, g in a.groupby("label"):
+        g = g.set_index("gauge_id").reindex(ids)
+        row = {"label": lab, "nse": round(float(g.nse.median()), 4), "kge": round(float(g.kge.median()), 4),
+               "p_vs_dpl": float(wilcoxon(g.nse, ref.nse, nan_policy="omit").pvalue)}
+        if lab.startswith("base"):
+            out["base"].append(row)
+        else:
+            row["round"] = int("".join(ch for ch in lab if ch.isdigit()))
+            row["kind"] = {"c": "composed", "i": "general", "d": "domain"}[lab[0]]
+            out["rounds"].append(row)
+    b = [r["nse"] for r in out["base"]]
+    out["base_mean"], out["base_sd"] = round(float(np.mean(b)), 4), round(float(np.std(b, ddof=1)), 4)
+    out["delta"] = round(max(0.005, out["base_sd"]), 4)
+    es = Path.home() / ".cache" / "hydroagent" / "k10_rounds.json"
+    if es.is_file():
+        out["stopped"] = json.loads(es.read_text()).get("stopped")
+    out["rounds"].sort(key=lambda r: (r["round"], r["kind"]))
     return out
 
 
