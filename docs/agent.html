@@ -82,7 +82,7 @@ footer ul { padding-left: 18px; margin: 4px 0; }
 <div class="card" id="exp3card" hidden>
   <h2>Which role matters? Opus vs Sonnet as Harness² editor, 3 runs per harness</h2>
   <p class="desc" id="exp3desc"></p>
-  <div id="exp3chart" class="chart" style="min-height:380px"></div>
+  <div id="exp3chart" class="chart" style="min-height:440px"></div>
   <div class="tablewrap"><table id="exp3table"></table></div>
 </div>
 <div class="card">
@@ -255,7 +255,8 @@ footer ul { padding-left: 18px; margin: 4px 0; }
       const pf = p => p === undefined || p === null ? '–' : (p < 0.001 ? '< 0.001' : p.toFixed(3));
       document.getElementById('exp3desc').textContent =
         `Agent model fixed at Claude Sonnet 5.5; only the model editing the harness differs. Each harness is run 3 times (base harness: ${b ? b.n_runs : '?'} runs) and scored on the 126 held-out Southeast basins. ` +
-        (E3.groups ? Object.entries(E3.groups).map(([g, v]) => `${gname[g]}: mean ${fmt(v.mean_of_means)} over ${v.n_harnesses} harness${v.n_harnesses > 1 ? 'es' : ''}`).join(' · ') : '') +
+        (E3.groups ? Object.entries(E3.groups).map(([g, v]) => `${gname[g]}: mean ${fmt(v.mean_of_means)} over ${v.n_harnesses} harness${v.n_harnesses > 1 ? 'es' : ''}` +
+          (v.n_runs ? `, ${v.n_runs_above_reference}/${v.n_runs} runs above the baseline ensemble` : '') + (v.p_runs_vs_base !== undefined ? ` (runs vs base runs p = ${pf(v.p_runs_vs_base)})` : '')).join(' · ') : '') +
         (E3.p_opus_vs_sonnet_editor !== undefined ? ` · Opus vs Sonnet editor (harness means, Mann–Whitney): p = ${pf(E3.p_opus_vs_sonnet_editor)}.` : '') +
         (E3.selected ? ` Harness² selected ${E3.selected}.` : '');
       const hs = E3.harnesses, xs = hs.map(h => h.label + (('opus-' + (E3.selected || '').replace('opus-', '')) === h.label ? ' ★' : ''));
@@ -274,15 +275,15 @@ footer ul { padding-left: 18px; margin: 4px 0; }
       });
       const refv = st[C.reference || 'dpl'].nse_median;
       tr.push({x: [xs[0], xs[xs.length - 1]], y: [refv, refv], mode: 'lines', name: 'differentiable baseline (3-seed ensemble)', line: {color: css('--s3'), width: 2, dash: 'dash'}, hoverinfo: 'skip'});
-      Plotly.react('exp3chart', tr, layout({margin: {l: 52, r: 16, t: 10, b: 150}, showlegend: true, legend: {orientation: 'h', y: -0.45, x: 0}, hovermode: 'closest',
+      Plotly.react('exp3chart', tr, layout({margin: {l: 52, r: 16, t: 90, b: 90}, showlegend: true, legend: {orientation: 'h', y: 1.02, yanchor: 'bottom', x: 0}, hovermode: 'closest',
         xaxis: {type: 'category', categoryarray: xs, gridcolor: css('--grid'), tickfont: {color: css('--muted')}},
         yaxis: {title: 'Median test NSE (126 basins)', gridcolor: css('--grid'), tickfont: {color: css('--muted')}}}), cfg);
       const tb = document.getElementById('exp3table');
       const h0 = tb.createTHead().insertRow();
-      ['Harness', 'Editor', 'Runs', 'Run medians', 'Mean', 'sd', 'Basin-averaged median', 'p vs baseline', 'p vs base harness'].forEach(t => { const th = document.createElement('th'); th.textContent = t; h0.appendChild(th); });
+      ['Harness', 'Editor', 'Runs', 'Run medians', 'Mean', 'sd', 'Basin-averaged median', 'p vs baseline (basins)', 'p vs base (runs)'].forEach(t => { const th = document.createElement('th'); th.textContent = t; h0.appendChild(th); });
       const tbd = tb.createTBody();
       hs.forEach((h, i) => { const r = tbd.insertRow();
-        [xs[i], gname[h.group], h.n_runs, h.run_nse.map(fmt).join(' · '), fmt(h.mean_run_nse), h.sd_run_nse === null ? '–' : fmt(h.sd_run_nse), fmt(h.avg_basin_nse_median), pf(h.p_vs_dpl), pf(h.p_vs_base)].forEach(v => { r.insertCell().textContent = v; }); });
+        [xs[i], {base: '–', sonnet_editor: 'Sonnet 5.5', opus_editor: 'Opus 5.5'}[h.group], h.n_runs, h.run_nse.length > 4 ? `${fmt(Math.min(...h.run_nse))}–${fmt(Math.max(...h.run_nse))}` : h.run_nse.map(fmt).join(' · '), fmt(h.mean_run_nse), h.sd_run_nse === null ? '–' : fmt(h.sd_run_nse), fmt(h.avg_basin_nse_median), pf(h.p_vs_dpl), pf(h.p_runs_vs_base)].forEach(v => { r.insertCell().textContent = v; }); });
     }
     const sp = document.getElementById('splits');
     const sh = sp.createTHead().insertRow();

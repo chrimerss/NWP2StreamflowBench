@@ -535,14 +535,23 @@ def _exp3_report(task: str, ids, ref) -> dict:
                                      "sd_run_nse": round(float(np.std(meds, ddof=1)), 4) if len(meds) > 1 else None,
                                      "avg_basin_nse_median": round(float(avg.median()), 4),
                                      "p_vs_dpl": float(wilcoxon(avg, ref.nse, nan_policy="omit").pvalue)})
-    if "base" in per:
+    base = next((h for h in out["harnesses"] if h["label"] == "base"), None)
+    if base is not None:
         for h in out["harnesses"]:
             if h["label"] != "base":
+                # basin-paired test on run-averaged NSE (ignores run-to-run noise, so optimistic)
                 h["p_vs_base"] = float(wilcoxon(per[h["label"]], per["base"], nan_policy="omit").pvalue)
+                # run-level test: this harness's run medians vs the base harness's run medians
+                h["p_runs_vs_base"] = float(mannwhitneyu(h["run_nse"], base["run_nse"]).pvalue)
+    refmed = float(ref.nse.median())
     for g in groups:
         hs = [h for h in out["harnesses"] if h["group"] == g]
         if hs:
-            out["groups"][g] = {"n_harnesses": len(hs), "mean_of_means": round(float(np.mean([h["mean_run_nse"] for h in hs])), 4)}
+            runs = [x for h in hs for x in h["run_nse"]]
+            out["groups"][g] = {"n_harnesses": len(hs), "mean_of_means": round(float(np.mean([h["mean_run_nse"] for h in hs])), 4),
+                                "n_runs": len(runs), "n_runs_above_reference": int(sum(r > refmed for r in runs))}
+            if g != "base" and base is not None:
+                out["groups"][g]["p_runs_vs_base"] = float(mannwhitneyu(runs, base["run_nse"]).pvalue)
     so = [h["mean_run_nse"] for h in out["harnesses"] if h["group"] == "sonnet_editor"]
     op = [h["mean_run_nse"] for h in out["harnesses"] if h["group"] == "opus_editor"]
     if len(so) >= 2 and len(op) >= 2:

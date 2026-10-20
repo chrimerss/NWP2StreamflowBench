@@ -95,8 +95,8 @@ sessions (Claude Opus 5.5).
   (+0.026 median NSE, p = 0.025) and large for the general-edit candidate (+0.048,
   p < 0.001). Harness² selects blindly, so it did not pick its best candidate.
 * **Caveats.** One split; one base-harness replicate in this framing; Harness² used four
-  attempts where the base harness used one. A k=10 sequential run with Claude Sonnet 5.5
-  (in progress) adds ten base-harness replicates and ten optimization rounds.
+  attempts where the base harness used one. The two experiments below add base-harness
+  replicates, more rounds, and three runs per harness.
 
 ### More rounds: k=10 sequential with Claude Sonnet 5.5 (stopped after round 3)
 
@@ -129,6 +129,68 @@ best so far by more than the base-harness spread (δ = 0.017 median NSE).
 * **Cost and time.** $43.0 in total ($25.0 for 19 agent runs, $14.1 for 9 Harness²
   sessions, $4.0 lost to runs cut short by OpenCode's doom-loop guard before it was
   disabled), 12.7 hours.
+
+### Which role matters: Opus vs Sonnet as the Harness² editor (3 runs per harness)
+
+Same Southeast task. The agent is fixed at Claude Sonnet 5.5 and only the editor (the
+Harness² improver) changes. A parallel k=3 Harness² run with Claude Opus 5.5 as editor
+produced nine candidate harnesses: three with general edits, three with domain edits and
+three composed. Every candidate was then run twice more, as were the three round-1
+harnesses that Sonnet edited in the k=10 run. The base harness has 13 runs (ten from the
+k=10 run, three from this one).
+
+| Harness | Editor | Median test NSE of each run | Mean | p vs base runs |
+|---|---|---|---|---|
+| Base harness | – | 13 runs, 0.531–0.615 | 0.564 (sd 0.022) | |
+| General edits | Sonnet 5.5 | 0.552 · 0.592 · 0.582 | 0.575 | 0.52 |
+| Domain edits | Sonnet 5.5 | 0.539 · 0.538 · 0.550 | 0.542 | 0.08 |
+| Composed | Sonnet 5.5 | 0.553 · 0.562 · 0.510 | 0.542 | 0.24 |
+| General edits 1 | Opus 5.5 | 0.544 · 0.586 · 0.542 | 0.557 | 0.61 |
+| General edits 2 | Opus 5.5 | 0.575 · 0.594 · 0.594 | 0.588 | 0.06 |
+| General edits 3 | Opus 5.5 | 0.570 · 0.577 · 0.562 | 0.570 | 0.36 |
+| Domain edits 1 | Opus 5.5 | 0.582 · 0.577 · 0.586 | 0.582 | 0.15 |
+| Domain edits 2 | Opus 5.5 | 0.587 · 0.600 · 0.611 | 0.600 | 0.025 |
+| Domain edits 3 | Opus 5.5 | 0.545 · 0.601 · 0.595 | 0.580 | 0.44 |
+| Composed 1 (selected by Harness²) | Opus 5.5 | 0.555 · 0.579 · 0.590 | 0.575 | 0.44 |
+| Composed 2 | Opus 5.5 | 0.588 · 0.580 · 0.565 | 0.578 | 0.19 |
+| Composed 3 | Opus 5.5 | 0.566 · 0.574 · 0.594 | 0.578 | 0.19 |
+| Differentiable baseline, 3-seed ensemble | | 0.559 | | |
+
+The first value in each row is the run Harness² itself saw. p: Mann–Whitney test of the
+harness's run medians against the 13 base-harness run medians.
+
+| Group | Harnesses | Mean of harness means | Runs above the baseline ensemble | p, runs vs base runs |
+|---|---|---|---|---|
+| Base harness | 1 | 0.564 | 7 of 13 | |
+| Sonnet 5.5 editor | 3 | 0.553 | 3 of 9 | 0.26 |
+| Opus 5.5 editor | 9 | 0.579 | 23 of 27 | 0.023 |
+
+Opus against Sonnet editor, harness means: Mann–Whitney p = 0.064.
+
+* **The editor is the role that matters.** With the same Sonnet agent, eight of nine
+  Opus-edited harnesses beat the base mean, and 23 of 27 of their runs beat the baseline
+  ensemble. Only one of three Sonnet-edited harnesses beat the base mean, and the other two
+  were worse. With three Sonnet harnesses the editor difference is suggestive, not
+  conclusive (p = 0.064).
+* **The gain is modest.** On average an Opus-edited harness adds 0.015 median NSE over the
+  base harness and 0.020 over the baseline ensemble. The best one (domain edits 2) adds
+  0.036 and 0.041 and is the only harness significant on its own at the run level. Picking
+  it after seeing test scores is selection on the test set, so the fair estimate for one
+  Harness² run is the selected harness (0.575) or the group mean (0.579).
+* **Harness² still selects poorly.** It chose composed 1, seventh of nine, from one run per
+  candidate. One run is a weak signal here: the spread across runs of one harness reaches
+  0.056, and domain edits 3 scored 0.545 on the run Harness² saw and about 0.60 on both
+  replicates. Composing did not help either: the three composed harnesses sit mid-pack,
+  below the best general and domain edits.
+* **Sharing edits across agents works.** An Opus-written harness lifts a Sonnet agent, so the
+  expensive model is needed only for the few editor sessions, not for every rollout.
+* **What this design cannot separate.** The Sonnet harnesses come from round 1 of the
+  sequential run, which also starts from the base harness, so the comparison is editor
+  against editor at the first edit. It does not show whether parallel mode beats
+  sequential mode over more rounds.
+* **Cost and time.** $89.5 in total over 13.6 hours: $44.4 for 11 Opus editor sessions,
+  $16.6 for 12 agent runs inside Harness², and $28.6 for 24 replicate runs. A Sonnet agent
+  run costs about $0.9–1.4.
 
 ### Differentiable baseline on every split (median test NSE of held-out basins)
 
@@ -233,6 +295,14 @@ prices ($4 / $20 per million input / output tokens, cache reads $0.20) a long ag
 rollout is roughly $5–15 and an improver session $3–8, so the pilot is roughly $40–80.
 `--executor anthropic/claude-sonnet-5-5` ($2 / $10) halves the executor share. The run
 ledger in each task summary records the actual cost.
+
+Actual spend on the Southeast calibration task:
+
+| Run | Cost | Wall time |
+|---|---|---|
+| Opus 5.5 both roles, k=1 parallel | $19 | |
+| Sonnet 5.5 both roles, k=10 sequential, stopped after round 3 | $43.0 | 12.7 h |
+| Opus 5.5 editor, Sonnet 5.5 agent, k=3 parallel, plus replicates | $89.5 | 13.6 h |
 
 ## Known limitations
 
