@@ -213,10 +213,20 @@ def brief(task_id: str, variant: str = "template") -> Path:
     root = config.TASKS / task_id / variant
     b = config.TASKS / task_id / f"brief-{variant}"
     if not b.exists():
-        (b / "data").mkdir(parents=True)
-        shutil.copy(root / "TASK.md", b / "TASK.md")
+        # Harness² builds evidence for parallel stages concurrently: build aside, then rename,
+        # so no caller sees a half-written brief and a lost race is harmless
+        import tempfile
+        tmp = Path(tempfile.mkdtemp(prefix=f".brief-{variant}-", dir=b.parent))
+        (tmp / "data").mkdir()
+        shutil.copy(root / "TASK.md", tmp / "TASK.md")
         for f in ("meta.json", "target_attributes.csv"):
-            shutil.copy(root / "task_folder" / "data" / f, b / "data" / f)
+            shutil.copy(root / "task_folder" / "data" / f, tmp / "data" / f)
         da = pd.read_csv(root / "task_folder" / "data" / "donor_attributes.csv")
-        da.head(20).to_csv(b / "data" / "donor_attributes_head.csv", index=False)
+        da.head(20).to_csv(tmp / "data" / "donor_attributes_head.csv", index=False)
+        try:
+            tmp.rename(b)
+        except OSError:
+            shutil.rmtree(tmp, ignore_errors=True)
+            if not (b / "TASK.md").is_file():    # lost the race only if someone else won it
+                raise
     return b

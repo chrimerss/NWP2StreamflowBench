@@ -9,6 +9,8 @@
     hydroagent report                      write docs/data/hydroagent.json for the dashboard tab
     hydroagent replicate --harness L=PATH ...   extra executor rollouts of given harness trees
     hydroagent run ... --offline           scripted executor and editor: end-to-end pipeline test, no API calls
+    hydroagent agy-smoke [--model SLUG]    check the Antigravity CLI executor before a run
+    hydroagent run ... --executor agy/SLUG   Antigravity CLI (subscription credits) as the agent
 
 Models use OpenCode's provider/model ids, e.g. anthropic/claude-sonnet-5-5. The
 Anthropic key is read from ANTHROPIC_API_KEY, else from `.CLAUDE_API` (raw key) or `.env`
@@ -19,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -133,18 +136,27 @@ def cmd_replicate(a) -> int:
         hdir = None if path in ("", "base") else Path(path).expanduser()
         if hdir is not None and not hdir.is_dir():
             raise SystemExit(f"harness not found: {hdir}")
-        jobs += [(label, hdir, f"replicates/{task}/{label}/r{i}") for i in range(a.start, a.start + a.n)]
+        jobs += [(label, hdir, f"{adapter.replicate_root}/{task}/{label}/r{i}") for i in range(a.start, a.start + a.n)]
     print(f"{len(jobs)} rollouts with {a.workers} workers, executor {os.environ.get('HARNESS2_SOLVER_MODEL')}", flush=True)
+    from . import antigravity as AG
     failed = 0
-    with ThreadPoolExecutor(max_workers=a.workers) as ex:
+    ex = ThreadPoolExecutor(max_workers=a.workers)
+    try:
         futs = {ex.submit(adapter.execute, task, h, rid): rid for _, h, rid in jobs}
         for f in as_completed(futs):
             try:
                 rd = f.result()
                 print(f"done {futs[f]} delivered={adapter.delivered(rd)}", flush=True)
+            except AG.AgyFailure as e:      # sign-in or quota: stop everything, resume later
+                print(f"STOPPED at {futs[f]}: {e}", flush=True)
+                ex.shutdown(wait=False, cancel_futures=True)
+                AG.kill_live()
+                raise
             except Exception as e:
                 failed += 1
                 print(f"FAILED {futs[f]}: {type(e).__name__}: {e}", flush=True)
+    finally:
+        ex.shutdown(wait=True)
     return int(failed > 0)
 
 
@@ -197,6 +209,10 @@ def cmd_check(a) -> int:
         problems.append("ANTHROPIC_API_KEY is not set (export it, or put ANTHROPIC_API_KEY=... in .env)")
     if not h2c.BUN.is_file() or not (h2c.OPENCODE_DIR / "node_modules").is_dir():
         problems.append(f"OpenCode/bun missing under {h2c.DEPENDENCIES}; see docs/hydroagent.md")
+    from . import antigravity as AG
+    if AG.is_agy(h2c.SOLVER_MODEL_OC) and not AG.binary().is_file():
+        problems.append(f"Antigravity CLI not found at {AG.binary()}; install it, sign in once with an "
+                        "interactive `agy` session, then run `hydroagent agy-smoke`")
     for tid in a.task:
         if not (config.TASKS / tid / a.variant / "task_folder" / "data" / "donors.npz").is_file():
             problems.append(f"task folder for {tid} missing; run `hydroagent prepare`")
@@ -229,7 +245,7 @@ def cmd_run(a) -> int:
     modes = ("agg", "seq") if a.mode == "both" else (mode_token(a.mode),)
     t0 = time.time()
     res = run_domain("camels-us", a.task, a.k, adapter=adapter, prop=prop, runs_root=config.RUNS / "adapt",
-                     library_root=config.RUNS / "library" / f"k{a.k}", modes=modes)
+                     library_root=adapter.library_dir(a.k), modes=modes)
     res["wall_s"] = round(time.time() - t0)
     (config.RUNS / "last_run.json").write_text(json.dumps(res, indent=1, default=str))
     print(json.dumps({k: res[k] for k in ("done", "failed", "wall_s") if k in res}))
@@ -275,7 +291,7 @@ def cmd_evaluate(a) -> int:
                                                                     if meta["run_id"] in chosen else "probe"),
                    "executor": meta.get("executor"), "delivered": got is not None,
                    "model_structure_changed": meta.get("model_structure_changed"),
-                   "network_flagged": adapter._audit(rj.parent).get("flagged")}
+                   "network_flagged": (meta.get("audit") or adapter._audit(rj.parent)).get("flagged")}
             if got:
                 row.update(nse_median=got["nse_median"], kge_median=got["kge_median"],
                            beats_knn_attr=f"{got['n_passed']}/{got['n_criteria']}")
@@ -563,12 +579,126 @@ def _exp3_report(task: str, ids, ref) -> dict:
     return out
 
 
+def cmd_agy_smoke(a) -> int:
+    """One short Antigravity session that checks what a Harness² rollout relies on: the CLI is
+    signed in and runs headless in a workspace below the trusted folder, AGENTS.md rules load in
+    full, workspace skills are found, the venv's python3 is on PATH, downloads are blocked by
+    the deny rules and by the fence, and the stream parser and audit understand the events."""
+    import re
+    import secrets
+    import subprocess
+
+    from . import antigravity as AG
+    from .h2adapter import NETWORK_PATTERNS
+    b = AG.binary()
+    if not b.is_file():
+        print(f"Antigravity CLI not found at {b}. Install it and sign in once with `agy`.")
+        return 1
+    v = subprocess.run([str(b), "--version"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    print("agy", (v.stdout or v.stderr).strip())
+    out = config.RUNS / "_agy_smoke" / time.strftime("%Y%m%dT%H%M%S")
+    out.mkdir(parents=True)
+    venv = str(Path(sys.executable).parent)
+    try:
+        ms = subprocess.run([str(b), "models"], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                            timeout=120, env=AG.env_for(out, out, venv_bin=venv, proxy=None))
+        listing = (ms.stdout + ms.stderr).strip()
+    except subprocess.TimeoutExpired:
+        listing = "(agy models timed out)"
+    finally:
+        shutil.rmtree(out / ".agyhome", ignore_errors=True)
+    (out / "models.txt").write_text(listing)
+    print("models:\n" + listing[:2000])
+    ws = AG.ws_root() / "smoke"
+    shutil.rmtree(ws, ignore_errors=True)
+    (ws / ".agents" / "skills" / "codeword").mkdir(parents=True)
+    w1, w2, w3 = (secrets.token_hex(3).upper() for _ in range(3))
+    filler = "\n".join(f"- Rule {i}: keep calibration logs in output/logs and name them by date." for i in range(200))
+    (ws / "AGENTS.md").write_text(f"# Project rules\n\nStart code word: ALPHA-{w1}.\n\n{filler}\n\n"
+                                  f"End code word: OMEGA-{w2}.\n")
+    (ws / ".agents" / "skills" / "codeword" / "SKILL.md").write_text(
+        "---\nname: codeword\ndescription: Use when asked for the skill code word.\n---\n\n"
+        f"The skill code word is SKILL-{w3}.\n")
+    prompt = ("Answer with one JSON object with keys a to h, one short string each. "
+              "a: without using any tool, give the two code words stated in your project rules "
+              "(they start with ALPHA- and OMEGA-), or say which you cannot see. "
+              "b: use your skill to find the skill code word. "
+              "c: run the shell command `python3 -c \"import sys, torch; print(sys.executable)\"` and give its output. "
+              "d: run `curl -sS -m 10 https://waterservices.usgs.gov/` and say what happened. "
+              "e: run `python3 -c \"import urllib.request as u; print(u.urlopen('https://zenodo.org', timeout=10).status)\"` "
+              "and then `python3 -c \"import urllib.request as u; print(u.urlopen('https://www.googleapis.com/storage/v1/b/x/o', timeout=10).status)\"`, "
+              "and give each output or error's last line. "
+              "f: try to read https://example.com with your URL-reading tool and say what happened. "
+              "g: search the web for 'USGS 02177000 streamflow' with your web search tool if you have one, "
+              "and say whether the search ran. "
+              "h: create the file notes/h.txt containing the word ok with your file-writing tool, not the shell, "
+              "and say whether it worked.")
+    model = a.executor or ""
+    model = model if AG.is_agy(model) else "agy/" + (a.model or "gemini-4-argon-high")
+    rc = AG.launch(ws, out, prompt, model, 600, venv_bin=venv, network_fence=True)
+    ev = out / "events.jsonl"
+    print(f"exit code {rc}; events: {ev}")
+    print("stderr tail:\n" + (out / "stderr.log").read_text(errors="replace")[-1500:])
+    print("trajectory:\n" + AG.render_events(ev, obs_trunc=600, max_chars=8000))
+    aud = AG.audit(ev, NETWORK_PATTERNS)
+    proxy = json.loads((out / "proxy.json").read_text()) if (out / "proxy.json").is_file() else {}
+    print("proxy hosts:", json.dumps(proxy))
+    print("audit:", json.dumps(aud))
+    txt = AG.result_text(ev)
+    web_ran = [AG.tool_call(st)[0] for st in AG.steps(ev)
+               if AG.WEB_TOOL.match(AG.tool_call(st)[0] or "-") and not AG.tool_call(st)[3]
+               and str(st.get("state", "")).upper() == "DONE"]
+    m = re.search(r"\{.*\}", txt, re.S)
+    try:
+        ans = json.loads(m.group(0)) if m else {}
+    except ValueError:
+        ans = {}
+    checks = [
+        ("ran headless and signed in", rc == 0 and bool(AG.steps(ev)), "critical"),
+        ("rules start loaded", f"ALPHA-{w1}" in str(ans.get("a", "")), "critical"),
+        (f"rules past {AG.RULES_MAX} chars loaded", f"OMEGA-{w2}" in str(ans.get("a", "")), "warn"),
+        ("workspace skill found", f"SKILL-{w3}" in str(ans.get("b", "")), "critical"),
+        ("venv python3 with torch on PATH", venv in str(ans.get("c", "")), "critical"),
+        ("python download went through the fence and was refused", "zenodo.org" in proxy.get("denied", {}), "critical"),
+        ("fence opens data-serving hosts to agy alone",
+         not [h for h in proxy.get("allowed", {}) if AG.LEAK_HOSTS.search(h.split(" ")[0]) and not h.endswith("(agy)")],
+         "critical"),
+        ("agent's python refused on an agy-only host",
+         any(h.startswith("www.googleapis.com (from") for h in proxy.get("denied", {})), "critical"),
+        ("parser sees tool steps", aud["tool_steps"] > 0, "critical"),
+        ("audit sees the curl command", "curl" in aud["network_pattern_hits"], "critical"),
+        ("audit flags the rollout", aud["flagged"] is True, "critical"),
+        ("web search blocked by the hook", not web_ran and bool(aud["web_tools_refused"]), "critical"),
+        ("no-web hook left intact", not aud["hooks_tampered"], "critical"),
+        ("file tool may write in the workspace", (ws / "notes" / "h.txt").is_file()
+         and not AG.result(ev).get("denied_actions"), "critical"),
+    ]
+    print(f"answers: {json.dumps(ans)}")
+    print(f"expected code words: ALPHA-{w1} OMEGA-{w2} SKILL-{w3}")
+    bad = 0
+    for name, ok, level in checks:
+        print(f"  {'PASS' if ok else ('FAIL' if level == 'critical' else 'WARN')}  {name}")
+        bad += (not ok) and level == "critical"
+    denied_google = [h for h in proxy.get("denied", {}) if AG.GOOGLE_HOSTS.search(h) and not AG.LEAK_HOSTS.search(h)]
+    if denied_google:
+        print("Google hosts refused by the fence. If agy failed, add the ones it needs with HYDRO_AGY_ALLOW_EXTRA; "
+              "if it worked, list them in HYDRO_AGY_BENIGN_HOSTS so the audit ignores them: " + ", ".join(denied_google))
+    held = [h for h in proxy.get("denied", {}) if AG.LEAK_HOSTS.search(h)]
+    if held:
+        print("Data-serving hosts refused by design (never add these): " + ", ".join(held))
+    print(f"trusted workspace folder for agy: {AG.ws_root()}")
+    return 1 if bad else 0
+
 def main(argv=None) -> int:
     _load_env_file()
     ap = argparse.ArgumentParser(prog="hydroagent", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("setup").set_defaults(fn=cmd_setup)
+    p = sub.add_parser("agy-smoke", help="check the Antigravity CLI executor (sign-in, rules, skills, fence)")
+    p.add_argument("--executor", help="agy/<model slug>")
+    p.add_argument("--model", help="model slug, e.g. gemini-4-argon-high (see `agy models`)")
+    p.set_defaults(fn=cmd_agy_smoke)
     p = sub.add_parser("dpl", help="differentiable parameter-learning baseline")
     p.add_argument("--splits", nargs="+", default=["all"])
     p.add_argument("--iters", type=int, default=500)

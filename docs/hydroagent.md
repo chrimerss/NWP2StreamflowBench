@@ -288,6 +288,68 @@ Harness² resolves `dependencies/` relative to its own checkout when installed e
 `hydroagent run --offline` replaces both model roles
 with scripted stand-ins and exercises the whole loop without API calls.
 
+### Antigravity CLI as the agent
+
+An executor ID of the form `agy/<model slug>` runs each rollout with Google's Antigravity
+CLI (`agy` 1.4.3) in headless mode instead of OpenCode. It draws on the Google account's
+subscription credits. The improver is unchanged, so Claude still edits the harness. The
+subscription lists Gemini 4 Argon, Gemini 3.8 Flash, Claude Opus 5.5 and Sonnet 5.5, and
+GPT-OSS 120B (`agy models`).
+
+```bash
+curl -fsSL https://antigravity.google/cli/install.sh | bash   # installs ~/.local/bin/agy
+mkdir -p "$TMPDIR/hydro_agy_ws" && cd "$TMPDIR/hydro_agy_ws"
+agy                                              # once, interactively: sign in and trust this folder
+hydroagent agy-smoke --model gemini-4-argon-high # 12 PASS/FAIL checks
+hydroagent run --task region-Southeast --variant calib --k 3 --mode parallel \
+    --executor agy/gemini-4-argon-high --improver anthropic/claude-opus-5-5
+hydroagent replicate --task region-Southeast --variant calib --executor agy/gemini-4-argon-high \
+    --harness base=base --n 3 --start 1
+```
+
+* **Harness delivery.** Harness² edits the same tree as for OpenCode. Each workspace gets
+  the always-on text as `AGENTS.md`, skills under `.agents/skills/`, and `scripts/`.
+* **Workspaces** live under `$TMPDIR/hydro_agy_ws` (`HYDRO_AGY_WS_ROOT`), outside the
+  hydroagent cache that holds the hidden target mapping and the full CAMELS record.
+* **Isolated home.** Each rollout runs with `HOME` pointed at a per-rollout directory that
+  holds copies of agy's sign-in and onboarding files and one link, to
+  `~/Library/Keychains`, where agy keeps its token. The user's global `GEMINI.md`,
+  conversations, memories, MCP servers and other credentials (`~/.config/gcloud`) never
+  reach a rollout, and the user's own files are never written.
+* **Permissions.** That home's settings allow shell commands and writes inside the
+  workspace, and deny URL reading, browser actions, MCP tools, nested `agy`, and download or install
+  commands. agy's default mode asks before every write, which a headless run refuses.
+* **No web search.** `search_web` runs on Google's side, so neither a permission rule nor
+  the fence can stop it; in the first smoke test it identified a gauge from its USGS
+  number. A `PreToolUse` hook in the isolated home's `~/.gemini/config/hooks.json` denies
+  it and every browser or URL tool. The agent's file tools cannot write there.
+* **Network fence.** Each rollout gets a local proxy that tunnels only to the hosts `agy`
+  needs, and only when the connecting process is the `agy` binary itself, checked with
+  `lsof` and the process's executable path. The agent's Python therefore cannot reach
+  Google's model APIs or `www.googleapis.com`, which also serves Cloud Storage downloads.
+  Every refusal is recorded in `proxy.json` and flagged by the audit.
+* **Failures stop the run.** A rollout that ends on sign-in, quota or empty output raises
+  an error that Harness² does not swallow, so a spent quota cannot silently decide
+  harness selection; the run resumes later. SIGTERM from the budget or early-stop guards,
+  and Ctrl-C, end agy and everything the agent started and stop the run at once.
+* **Separate caches.** The substrate token carries the model, so namespaces
+  (`camels-calib-ag-gemini-4-argon-high-agg3`), replicates and the reflection library
+  never mix executors. A cached rollout is reused only by the executor that made it.
+* **Cost tracking.** Rollouts carry no dollar cost; only the improver's API spend is
+  metered. The `/usage` command in an interactive `agy` session shows the credits used.
+
+Smoke test, 2026-10-20, Gemini 4 Argon (High): all 14 checks pass. The CLI runs headless in
+a workspace below the trusted folder, reads a 15,000-character `AGENTS.md` in full (the
+rules cap in the web docs does not bind), finds workspace skills, uses the venv's
+`python3` and may write in the workspace; `curl` is denied by rule, Python downloads are
+refused by the fence, the web search is refused by the hook, and the parser and audit read
+the event stream.
+
+First real rollout, same model, base harness, Southeast: delivered in 15 minutes with a
+clean audit, median test NSE 0.454 (Sonnet 5.5 base-harness runs: 0.531–0.615). It ran
+before workspace writes were granted, so its file tool was refused and it worked through
+the shell; it is archived, not counted.
+
 ## Cost
 
 A k=1 Harness² step is 4 executor rollouts and 3 improver sessions. At Claude Opus 5.5

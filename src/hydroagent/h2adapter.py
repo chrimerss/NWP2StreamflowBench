@@ -40,7 +40,10 @@ PROMPT = (
 NETWORK_PATTERNS = re.compile(
     r"waterservices\.usgs|waterdata\.usgs|api\.waterdata|nwis\.|dataretrieval|ucar\.edu|gdex|zenodo\.org|"
     r"hydroshare|ornl\.gov|sciencebase|\bcurl\b|\bwget\b|requests\.(get|post)|urllib\.request|urlopen|"
-    r"http\.client|socket\.create_connection|pip install|uv pip",
+    r"http\.client|socket\.create_connection|pip install|uv pip|"
+    r"storage\.googleapis|gs://|gcsfs|google\.cloud|caravan|huggingface|hf_hub|drive\.google|googleusercontent|"
+    r"hydroagent/hidden|mapping\.json|camels_daymet|\.cache/hydroagent|\bagy\b|genai|generativelanguage|"
+    r"cloudcode|oauth_creds|application_default|\.config/gcloud|\.gemini/",
     re.IGNORECASE)
 
 
@@ -138,7 +141,13 @@ class HydroAdapter:
         self.steps = int(steps)
         self.network_fence = network_fence
         self.fake_executor = fake_executor
-        self.substrate = OpencodeSubstrate()
+        from . import antigravity as AG
+        self.agy = AG.is_agy(h2c.SOLVER_MODEL_OC)
+        self.agy_effort = os.environ.get("HYDRO_AGY_EFFORT") or None
+        self.substrate = AG.substrate(h2c.SOLVER_MODEL_OC, self.agy_effort) if self.agy else OpencodeSubstrate()
+        if self.agy and not fake_executor:
+            self.substrate.preflight()
+            AG.install_cleanup()
         self.rollouts = config.RUNS / "rollouts"
         ch = resolve_channel_model("opencode", h2c.IMPROVER_MODEL, effort="high")
         self.spec = BenchSpec(
@@ -166,6 +175,15 @@ class HydroAdapter:
             allow_subagents=True,
             proposer_deliverables="contents",
         )
+
+    @property
+    def replicate_root(self) -> str:
+        """Replicate run ids live apart per substrate so cached rollouts never cross over."""
+        return "replicates" if self.substrate.name == "oc" else f"replicates-{self.substrate.name}"
+
+    def library_dir(self, k: int) -> Path:
+        tag = "" if self.substrate.name == "oc" else f"{self.substrate.name}-"
+        return config.RUNS / "library" / f"{tag}k{k}"
 
     # ------------------------------------------------------------------ tasks
     def tasks(self, split: str = "all") -> list[str]:
@@ -195,6 +213,15 @@ class HydroAdapter:
         if "internet" not in g.lower():
             raise ValueError("guardrails.md must keep the rule that no data may be searched for or "
                              "downloaded from the internet (the targets are deliberately anonymous).")
+        if self.agy:
+            from . import antigravity as AG
+            # off by default: agy 1.4.3 read a 15,000-character AGENTS.md in full (agy-smoke)
+            cap = int(os.environ.get("HYDRO_AGY_RULES_CAP", 0))
+            n = sum(len(tree.get(f, "")) for f in self.substrate.surface().always_on)
+            if cap and n > cap:
+                raise ValueError(f"the always-on files total {n} characters; the Antigravity executor reads "
+                                 f"at most about {AG.RULES_MAX} characters of rules, so keep them under {cap} "
+                                 "(move detail into skills, which load on demand).")
 
     # ------------------------------------------------------------------ rollouts
     def _run_dir(self, run_id: str) -> Path:
@@ -205,27 +232,46 @@ class HydroAdapter:
         from harness2.core import runmark as RM
 
         out = self._run_dir(run_id)
+        executor = "fake" if self.fake_executor else self.h2c.SOLVER_MODEL_OC
+        prev = json.loads((out / "rollout.json").read_text()).get("executor") if (out / "rollout.json").is_file() else None
+        if prev not in (None, executor):
+            raise RuntimeError(f"{out} holds a rollout by {prev}, not {executor}; refusing to reuse or overwrite it")
         if RM.is_complete(out, harness_dir=harness_dir) and self.delivered(out):
             return out
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir(parents=True)
         src = Path(harness_dir) if harness_dir is not None else self.base_harness()
         install = self.substrate.materialise(src, self.spec, {})
-        tmp = Path(tempfile.mkdtemp(prefix="hydro_ws_"))
+        from . import antigravity as AG
+        # agy workspaces share one parent so a single workspace-trust decision covers them all
+        parent = None
+        if self.agy:
+            parent = AG.ws_root()
+            parent.mkdir(parents=True, exist_ok=True)
+        tmp = Path(tempfile.mkdtemp(prefix="hydro_ws_", dir=parent))
         ws = tmp / "ws"
+        staged = {}
         try:
             _clone_tree(self._template(task_id), ws)
             render = tmp / "render"
             render_opencode_tree(install.staging_dir, render, {"domain_focus": "regional hydrology"})
-            for name in (".opencode", "scripts"):
-                if (render / name).exists():
-                    shutil.copytree(render / name, ws / name, dirs_exist_ok=True)
-            if (render / "AGENTS.md").is_file():
-                shutil.copy(render / "AGENTS.md", ws / "AGENTS.md")
+            if self.agy:
+                staged = AG.stage(render, ws)
+            else:
+                for name in (".opencode", "scripts"):
+                    if (render / name).exists():
+                        shutil.copytree(render / name, ws / name, dirs_exist_ok=True)
+                if (render / "AGENTS.md").is_file():
+                    shutil.copy(render / "AGENTS.md", ws / "AGENTS.md")
+                (ws / "opencode.json").write_text(json.dumps({"agent": {"build": {"steps": self.steps}}}))
             dcrest0 = _tree_hash(ws / "dcrest")
-            (ws / "opencode.json").write_text(json.dumps({"agent": {"build": {"steps": self.steps}}}))
             if self.fake_executor:
                 rc = self._fake_rollout(ws, out)
+            elif self.agy:
+                rc = AG.launch(ws, out, PROMPT.format(ws=ws), self.h2c.SOLVER_MODEL_OC,
+                               int(timeout or self.timeout), venv_bin=str(Path(sys.executable).parent),
+                               network_fence=self.network_fence, effort=self.agy_effort)
+                staged["run"] = AG.check_ran(out, rc)     # raises on sign-in/quota/empty output
             else:
                 rc = self._opencode(ws, out, int(timeout or self.timeout), run_id)
             shutil.copytree(ws / "output", out / "output", dirs_exist_ok=True)
@@ -236,8 +282,11 @@ class HydroAdapter:
             (out / "rollout.json").write_text(json.dumps(
                 {"task_id": task_id, "run_id": run_id, "returncode": rc, "model_structure_changed": changed,
                  "harness": "base" if harness_dir is None else str(harness_dir),
-                 "executor": "fake" if self.fake_executor else self.h2c.SOLVER_MODEL_OC,
-                 "audit": self._audit(out)}, indent=1))
+                 "executor": executor, "effort": self.agy_effort if self.agy else None,
+                 "substrate": self.substrate.name, "staging": staged,
+                 "agy_result": {k: v for k, v in AG.result(out / "events.jsonl").items()
+                                if not isinstance(v, str) or len(v) < 300} if self.agy else None,
+                 "audit": self._audit(out, self.substrate.name)}, indent=1))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
             shutil.rmtree(install.staging_dir, ignore_errors=True)
@@ -293,9 +342,16 @@ class HydroAdapter:
         (out / "events.jsonl").write_text("\n".join(json.dumps(e) for e in ev) + "\n")
         return p.returncode
 
-    def _audit(self, out: Path) -> dict:
-        """Look for network access in what the agent *ran* (tool inputs), not in prose it wrote."""
+    def _audit(self, out: Path, substrate: Optional[str] = None) -> dict:
+        """Look for network access in what the agent *ran* (tool inputs), not in prose it wrote.
+        The event grammar follows the substrate that produced the rollout, not this adapter's."""
+        out = Path(out)
         ev = out / "events.jsonl"
+        if substrate is None and (out / "rollout.json").is_file():
+            substrate = json.loads((out / "rollout.json").read_text()).get("substrate")
+        if str(substrate or "").startswith("ag-") and (out / "stderr.log").is_file():
+            from . import antigravity as AG
+            return AG.audit(ev, NETWORK_PATTERNS)
         hits = set()
         if ev.is_file():
             for line in ev.read_text(errors="replace").splitlines():
