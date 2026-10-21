@@ -617,7 +617,9 @@ def _exp4_report(task: str, ids, ref, exp3: Optional[dict] = None, slug: str = "
     R = config.RUNS / "rollouts"
     ns, rep = f"camels-calib-ag-{slug}-agg3", f"replicates-ag-{slug}"
     groups = {
-        "argon_base": [("argon-base", sorted(R.glob(f"{ns}/{task}/base*")) + sorted(R.glob(f"{rep}/{task}/base/r*")))],
+        # base/r* are replicate runs; base/fb-* are Harness² candidate slots whose editor failed
+        # (no API credit), so they ran the byte-identical base harness
+        "argon_base": [("argon-base", sorted(R.glob(f"{ns}/{task}/base*")) + sorted(R.glob(f"{rep}/{task}/base/*")))],
         "argon_opus_editor": [(f"argon-{h}", [R / f"{ns}/{task}/{h}"] + sorted(R.glob(f"{rep}/{task}/argon-{h}/r*")))
                               for h in H9],
     }

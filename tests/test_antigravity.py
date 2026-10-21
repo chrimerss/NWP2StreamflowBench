@@ -383,3 +383,17 @@ def test_fence_opens_agy_only_hosts_to_the_agy_binary_alone():
             hosts = f.summary()
         assert (expect.endswith("200")) == ("127.0.0.1 (agy)" in hosts["allowed"])
     up.close()
+
+
+def test_editor_billing_failure_stops_the_run(monkeypatch):
+    pytest.importorskip("harness2")
+    import subprocess
+    from hydroagent import h2adapter as HA
+    HA.configure()
+    HA.patch_claude()
+    from harness2.core import proposer as P
+    fake = subprocess.CompletedProcess(["bun", "src/index.ts"], 0, stdout='{"error": "Your credit balance is too low to access the Anthropic API."}', stderr="")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: fake)
+    with pytest.raises(HA.ImproverFailure):
+        P.subprocess.run(["bun", "src/index.ts"], capture_output=True, text=True)
+    assert not issubclass(HA.ImproverFailure, Exception)

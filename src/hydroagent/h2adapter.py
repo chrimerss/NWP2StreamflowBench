@@ -54,6 +54,17 @@ def configure(executor: str | None = None, improver: str | None = None) -> None:
     os.environ.setdefault("HARNESS2_RUNS_DIR", str(config.RUNS))
 
 
+class ImproverFailure(BaseException):
+    """The editor's model account cannot be used (no credit, bad key). A BaseException on
+    purpose: Harness² treats an ordinary editor failure as a fallback to the base harness and
+    carries on, which silently turns every candidate into a base-harness replicate
+    (2026-10-21: nine stages fell back when the API key ran out of credit)."""
+
+
+IMPROVER_FATAL = re.compile(r"credit balance is too low|invalid x-api-key|authentication_error|"
+                            r"account has been disabled|organization has been disabled", re.IGNORECASE)
+
+
 def patch_claude() -> None:
     from harness2.core import proposer as P
 
@@ -80,7 +91,6 @@ def patch_claude() -> None:
     # model turns and tool calls of the editor/composer/reflector can be counted afterwards
     import subprocess as _sp
     import time as _time
-    real_run = _sp.run
 
     def run(cmd, *a, **kw):
         env = kw.get("env")
@@ -91,7 +101,11 @@ def patch_claude() -> None:
                 kw["env"] = {**env, "OPENCODE_PERMISSION": json.dumps(perm)}
             except ValueError:
                 pass
-        res = real_run(cmd, *a, **kw)
+        res = _sp.run(cmd, *a, **kw)          # looked up per call (tests substitute it)
+        text = "".join(x for x in (getattr(res, "stdout", None), getattr(res, "stderr", None)) if isinstance(x, str))
+        m = IMPROVER_FATAL.search(text)
+        if m:
+            raise ImproverFailure(f"editor model unavailable ({m.group(0)}); stopping instead of falling back")
         try:
             if isinstance(cmd, (list, tuple)) and "src/index.ts" in [str(c) for c in cmd] and \
                     isinstance(getattr(res, "stdout", None), str):
