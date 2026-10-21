@@ -5,6 +5,7 @@ adapter path with a stand-in `agy` binary and needs the pilot task folder
 (`hydroagent prepare`).
 """
 import json
+import os
 import re
 import shutil
 import socket
@@ -68,6 +69,8 @@ def test_isolated_home_copies_signin_files_only(tmp_path, monkeypatch):
     s = json.loads((g / "antigravity-cli" / "settings.json").read_text())
     assert s["trustedWorkspaces"] == ["/ws"]
     assert f"write_file({tmp_path / 'ws'})" in s["permissions"]["allow"]
+    assert home == Path(os.path.realpath(home))                          # resolved: /var is /private/var
+    assert f"read_file({home / '.gemini' / 'antigravity-cli' / 'brain'})" in s["permissions"]["allow"]
     assert "read_url(*)" in s["permissions"]["deny"] and "read_url(*)" not in s["permissions"]["allow"]
     assert (g / "antigravity-cli" / "jetski_state.pbtxt").read_text() == "jetski_state.pbtxt"
     assert (g / "google_accounts.json").is_file()
@@ -177,7 +180,16 @@ def test_render_audit_and_failure_detection(tmp_path, monkeypatch):
     a = AG.audit(ev, NETWORK_PATTERNS)
     # the refused search is not a leak; the curl attempt is flagged
     assert a["flagged"] is True and "curl" in a["network_pattern_hits"] and a["web_tools_used"] == []
-    assert AG.check_ran(tmp_path, 0) == {"steps": 4, "status": "SUCCESS", "error": ""}   # the prompt is not a step
+    assert AG.check_ran(tmp_path, 0) == {"steps": 4, "status": "SUCCESS", "error": "", "soft_denials": [],
+                                         "ended_on_denial": False}   # the prompt is not a step
+    (tmp_path / "d").mkdir()
+    _events(tmp_path / "d" / "events.jsonl", [
+        _tool(1, "run_command", {"CommandLine": "python3 a.py"}, output="long"),
+        _tool(2, "read_file", {"Path": "/x/.agyhome/.gemini/antigravity-cli/brain/s/output.txt"}, "ERROR",
+              error="permission check failed for read_file: user denied permission for read_file(/x)"),
+        {"event": "result", "result": {"status": "SUCCESS", "response": ""}}])
+    got = AG.check_ran(tmp_path / "d", 0)
+    assert got["ended_on_denial"] and len(got["soft_denials"]) == 1
     # startup sign-in noise and a stalled stream after real work are not failures
     (tmp_path / "agy.log").write_text("E1021 errorreport.go:224] error getting token source: You are not logged into Antigravity.\n")
     stalled = _events(tmp_path / "s" / "events.jsonl" if (tmp_path / "s").mkdir() is None else None, [

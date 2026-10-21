@@ -262,7 +262,9 @@ footer ul { padding-left: 18px; margin: 4px 0; }
         (E.groups ? Object.entries(E.groups).map(([g, v]) => `${gname[g]}: mean ${fmt(v.mean_of_means)} over ${v.n_harnesses} harness${v.n_harnesses > 1 ? 'es' : ''}` +
           (v.n_runs ? `, ${v.n_runs_above_reference}/${v.n_runs} runs above the baseline ensemble` : '') + (v.p_runs_vs_base !== undefined ? ` (runs vs base runs p = ${pv(v.p_runs_vs_base)})` : '')).join(' · ') : '') +
         (extra ? extra(E) : '') + (E.selected ? ` Harness² selected ${E.selected}.` : '') +
-        (E.n_flagged_excluded ? ` ${E.n_flagged_excluded} rollout(s) flagged by the audit are left out.` : '');
+        (E.n_flagged_excluded ? ` ${E.n_flagged_excluded} rollout(s) flagged by the audit are left out.` : '') +
+        (E.n_invalid_excluded ? ` ${E.n_invalid_excluded} rollout(s) cut short by a permission refusal are left out.` : '') +
+        (E.note ? ` ${E.note}` : '');
       const hs = E.harnesses, xs = hs.map(h => h.label + (E.selected === h.label ? ' ★' : ''));
       const tr = [];
       if (b) {

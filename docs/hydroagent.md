@@ -192,6 +192,39 @@ Opus against Sonnet editor, harness means: Mann–Whitney p = 0.064.
   $16.6 for 12 agent runs inside Harness², and $28.6 for 24 replicate runs. A Sonnet agent
   run costs about $0.9–1.4.
 
+### Experiment 4: Gemini 4 Argon as the agent (paused)
+
+Same Southeast task and design as experiment 3, with the agent run by Google's Antigravity
+CLI on Gemini 4 Argon (High) and Claude Opus 5.5 as the Harness² editor. The agent's web
+search, URL tools and downloads are blocked (see "Antigravity CLI as the agent" below).
+
+| Base-harness run | Median test NSE | KGE | Minutes |
+|---|---|---|---|
+| Harness² base run 1 | 0.607 | 0.639 | 41 |
+| Harness² base run 2 | 0.558 | 0.621 | 43 |
+| Extra base run 1 | 0.573 | 0.656 | 53 |
+| Mean | 0.579 (sd 0.025) | | |
+| Sonnet 5.5 base harness, 13 runs (experiment 3) | 0.564 (sd 0.022) | | |
+| Differentiable baseline, 3-seed ensemble | 0.559 | | |
+
+* **The Gemini agent is at least as good as the Sonnet agent on the unedited harness.** Its
+  three runs average 0.579, level with the Opus-edited Sonnet harnesses (0.579) and above
+  the Sonnet base harness (0.564), but three runs cannot separate them (p = 0.36).
+* **Paused by the subscription quota.** It ran out on 2026-10-21 after about 3.5 full
+  rollouts' worth of use and resets about 2026-10-27. A full rollout used about 300k input,
+  110k output and 8–13 million cached input tokens over 40–50 minutes, so the full design
+  (about 30 more rollouts) would need roughly eight weekly quotas on this subscription.
+  The Opus editor had written two candidate harnesses ($2.26 of API spend) when the run
+  was stopped; they are archived and the editing stage will rerun from clean evidence.
+* **Two more base runs were invalid and are archived.** Moving each rollout's private home
+  next to its workspace gave it a `/var/...` path that agy did not match against the
+  `/private/var/...` paths it reports, so it refused the agent's read of agy's own saved
+  output and ended both sessions after 2 minutes. Homes are now resolved paths with an
+  explicit read grant, and a rollout that ends on such a refusal is marked invalid and
+  left out of the report. One API stall (a 5-minute idle model stream) ended base run 2
+  after it had delivered; it counts like a timeout.
+* **Resume** with `~/.cache/hydroagent/exp4_resume.sh`, which reruns the smoke test first.
+
 ### Differentiable baseline on every split (median test NSE of held-out basins)
 
 | Split | Kind | Held out | Baseline (single seed) | Released calibrations + attribute transfer | Gauged upper bound |
@@ -347,8 +380,11 @@ the event stream.
 
 First real rollout, same model, base harness, Southeast: delivered in 15 minutes with a
 clean audit, median test NSE 0.454 (Sonnet 5.5 base-harness runs: 0.531–0.615). It ran
-before workspace writes were granted, so its file tool was refused and it worked through
-the shell; it is archived, not counted.
+before workspace writes were granted, its file tool was refused, and it delivered the same
+quick early prediction as the two cut-short runs of experiment 4 (identical to 1e-5); it is
+archived, not counted.
+agy also saves long tool outputs under its home and has the agent read them back; that
+read needs an explicit grant (added after experiment 4's pause, not yet smoke-tested).
 
 ## Cost
 
@@ -365,6 +401,7 @@ Actual spend on the Southeast calibration task:
 | Opus 5.5 both roles, k=1 parallel | $19 | |
 | Sonnet 5.5 both roles, k=10 sequential, stopped after round 3 | $43.0 | 12.7 h |
 | Opus 5.5 editor, Sonnet 5.5 agent, k=3 parallel, plus replicates | $89.5 | 13.6 h |
+| Opus 5.5 editor, Gemini 4 Argon agent via Antigravity (paused) | $2.26 + the week's subscription quota | 1.5 h |
 
 ## Known limitations
 

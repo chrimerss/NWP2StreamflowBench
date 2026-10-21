@@ -537,8 +537,12 @@ def _harness_groups(task: str, ids, ref, groups: dict, base_label: str) -> dict:
             for d in dirs:
                 if not ((d / "rollout.json").is_file() and a.delivered(d)):
                     continue
-                if (json.loads((d / "rollout.json").read_text()).get("audit") or {}).get("flagged"):
+                meta = json.loads((d / "rollout.json").read_text())
+                if (meta.get("audit") or {}).get("flagged"):
                     out["n_flagged_excluded"] += 1
+                    continue
+                if ((meta.get("staging") or {}).get("run") or {}).get("ended_on_denial"):
+                    out["n_invalid_excluded"] = out.get("n_invalid_excluded", 0) + 1
                     continue
                 sc = a.score(d, task)
                 runs.append(pd.DataFrame(sc["per_basin"]).set_index("gauge_id").reindex(ids))
@@ -619,6 +623,9 @@ def _exp4_report(task: str, ids, ref, exp3: Optional[dict] = None, slug: str = "
     }
     out = _harness_groups(task, ids, ref, groups, "argon-base")
     out["agent"] = f"agy/{slug}"
+    note = config.RESULTS / "calib" / "exp4_note.txt"
+    if note.is_file():
+        out["note"] = note.read_text().strip()
     sel = _selected(ns, task, "argon-")
     if sel:
         out["selected"] = sel

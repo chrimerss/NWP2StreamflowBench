@@ -182,13 +182,19 @@ def allow_hosts() -> tuple:
     return tuple(dict.fromkeys(h for h in hosts if not LEAK_HOSTS.search(h)))
 
 
-def settings(ws: Optional[Path] = None) -> dict:
+def settings(ws: Optional[Path] = None, home: Optional[Path] = None) -> dict:
     """Permission rules. agy 1.4.3 runs in "request-review" mode, where even writes inside the
     workspace wait for approval and a headless run refuses them, so the workspace is granted
     explicitly (under both its given and resolved path: /var is /private/var on macOS)."""
     allow = list(ALLOW)
     if ws is not None:
         allow += [f"write_file({p})" for p in dict.fromkeys((str(ws), os.path.realpath(ws)))]
+    if home is not None:
+        # agy saves long tool outputs under ~/.gemini/antigravity-cli/brain and tells the agent
+        # to read them there; outside the workspace that read is refused unless granted, and the
+        # refusal ends the session (2026-10-21: two rollouts stopped after 2 minutes)
+        brain = Path(home) / ".gemini" / "antigravity-cli" / "brain"
+        allow += [f"read_file({p})" for p in dict.fromkeys((str(brain), os.path.realpath(brain)))]
     return {"permissions": {"allow": allow, "deny": list(DENY)}, "allowNonWorkspaceAccess": False}
 
 
@@ -201,7 +207,8 @@ def isolated_home(run_dir: Path, real_home: Optional[Path] = None, ws: Optional[
     the user's files, share state with another rollout, or find other credentials such as
     ~/.config/gcloud by a relative path."""
     real = Path(real_home or Path.home()).resolve()
-    home = Path(run_dir) / ".agyhome"
+    # resolved, so the paths agy reports (/private/var/...) match HOME (macOS: /var -> /private/var)
+    home = Path(os.path.realpath(run_dir)) / ".agyhome"
     if home.resolve() == real:
         raise ValueError(f"refusing to build an isolated home at {home}")
     if home.is_symlink():
@@ -229,7 +236,7 @@ def isolated_home(run_dir: Path, real_home: Optional[Path] = None, ws: Optional[
             base = {}
     _write_hooks(gem / "config")
     base.pop("permissions", None)
-    base.update(settings(ws))
+    base.update(settings(ws, home))
     (cli / "settings.json").write_text(json.dumps(base, indent=1))
     return home
 
@@ -546,7 +553,13 @@ def check_ran(out: Path, rc: int) -> dict:
     if why:
         raise AgyFailure(f"agy stopped on quota or rate limit (exit {rc}, {len(worked)} steps): {why.group(0)}; "
                          f"{(err + final).strip()[-600:]}")
-    return {"steps": len(worked), "status": status, "error": str(res.get("error") or "")[:300]}
+    # agy refuses tool calls it would ask about ("user denied permission"); a session that ends
+    # on such a refusal stopped because of our settings, not the agent, and is not a valid rollout
+    tools = [tool_call(b) for b in steps(ev) if tool_call(b)[0]]
+    soft = [f"{t}({json.dumps(a, default=str)[:160]})" for t, a, _, e in tools if e and "user denied permission" in str(e)]
+    ended = bool(tools) and bool(tools[-1][3]) and "user denied permission" in str(tools[-1][3])
+    return {"steps": len(worked), "status": status, "error": str(res.get("error") or "")[:300],
+            "soft_denials": soft[:10], "ended_on_denial": ended}
 
 
 # ---------------------------------------------------------------- event stream
