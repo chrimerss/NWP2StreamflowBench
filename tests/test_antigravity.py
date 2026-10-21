@@ -329,6 +329,7 @@ def test_rollout_through_agy_path(tmp_path, monkeypatch):
         HydroAdapter([task], variant="template").execute(task, None, rid)
 
 
+@pytest.mark.skipif(shutil.which("lsof") is None, reason="the fence identifies client processes with lsof")
 def test_fence_opens_agy_only_hosts_to_the_agy_binary_alone():
     import subprocess
     import sys
