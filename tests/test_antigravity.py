@@ -234,6 +234,7 @@ def test_isolated_home_installs_the_no_web_hook(tmp_path):
 
 
 def test_executor_id_selects_substrate(monkeypatch, tmp_path):
+    pytest.importorskip("harness2")
     from hydroagent.h2adapter import HydroAdapter, configure
     configure()
     from harness2 import config as h2c
@@ -298,6 +299,7 @@ FAKE_AGY = textwrap.dedent('''\
 @pytest.mark.skipif(not (config.TASKS / f"fold1-pilot{config.PILOT_TARGETS}" / "template" / "task_folder" /
                          "data" / "donors.npz").is_file(), reason="run `hydroagent prepare` first")
 def test_rollout_through_agy_path(tmp_path, monkeypatch):
+    pytest.importorskip("harness2")
     from hydroagent.h2adapter import HydroAdapter, configure
     configure()
     from harness2 import config as h2c
