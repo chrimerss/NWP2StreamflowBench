@@ -25,6 +25,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -453,6 +454,10 @@ def _calib_report(task: str = "region-Southeast") -> dict:
         out["exp3"] = _exp3_report(task, ids, ref)
     except Exception as e:          # partial data while experiment 3 runs
         out["exp3"] = {"error": f"{type(e).__name__}: {e}"}
+    try:
+        out["exp4"] = _exp4_report(task, ids, ref, out.get("exp3"))
+    except Exception as e:          # partial data while experiment 4 runs
+        out["exp4"] = {"error": f"{type(e).__name__}: {e}"}
     out["n_train"] = len(json.loads((config.HIDDEN / task / "task.json").read_text())["donors"])
     # baseline across every split
     d = None
@@ -515,31 +520,28 @@ def _k10_report(task: str, ids, ref) -> dict:
     return out
 
 
-def _exp3_report(task: str, ids, ref) -> dict:
-    """Experiment 3: Opus editor vs Sonnet editor (Sonnet agent), parallel k=3, 3 runs per harness."""
+def _harness_groups(task: str, ids, ref, groups: dict, base_label: str) -> dict:
+    """Score every run of every harness, per group; run-level tests against the base harness.
+    Rollouts the audit flagged (network attempts, web tools, tampering) are left out and counted."""
     import numpy as np
     from scipy.stats import mannwhitneyu, wilcoxon
 
     from .h2adapter import HydroAdapter, configure
     configure()
-    R = config.RUNS / "rollouts"
-    groups = {
-        "base": [("base", sorted(R.glob(f"camels-calib-oc-agg10/{task}/base*")) + sorted(R.glob(f"camels-calib-oc-agg3/{task}/base*")))],
-        "sonnet_editor": [(f"sonnet-{h}", [R / f"camels-calib-oc-seq10/{task}/{h}"] + sorted(R.glob(f"replicates/{task}/sonnetimp-{h}/r*")))
-                          for h in ("inv1", "dom1", "c1")],
-        "opus_editor": [(f"opus-{h}", [R / f"camels-calib-oc-agg3/{task}/{h}"] + sorted(R.glob(f"replicates/{task}/opusimp-{h}/r*")))
-                        for h in ("inv1", "inv2", "inv3", "dom1", "dom2", "dom3", "agg1", "agg2", "agg3")],
-    }
     a = HydroAdapter([task], variant="calib")
-    out = {"harnesses": [], "groups": {}}
+    out = {"harnesses": [], "groups": {}, "n_flagged_excluded": 0}
     per = {}
     for gname, items in groups.items():
         for label, dirs in items:
             runs = []
             for d in dirs:
-                if (d / "rollout.json").is_file() and a.delivered(d):
-                    sc = a.score(d, task)
-                    runs.append(pd.DataFrame(sc["per_basin"]).set_index("gauge_id").reindex(ids))
+                if not ((d / "rollout.json").is_file() and a.delivered(d)):
+                    continue
+                if (json.loads((d / "rollout.json").read_text()).get("audit") or {}).get("flagged"):
+                    out["n_flagged_excluded"] += 1
+                    continue
+                sc = a.score(d, task)
+                runs.append(pd.DataFrame(sc["per_basin"]).set_index("gauge_id").reindex(ids))
             if not runs:
                 continue
             meds = [float(r.nse.median()) for r in runs]
@@ -551,12 +553,12 @@ def _exp3_report(task: str, ids, ref) -> dict:
                                      "sd_run_nse": round(float(np.std(meds, ddof=1)), 4) if len(meds) > 1 else None,
                                      "avg_basin_nse_median": round(float(avg.median()), 4),
                                      "p_vs_dpl": float(wilcoxon(avg, ref.nse, nan_policy="omit").pvalue)})
-    base = next((h for h in out["harnesses"] if h["label"] == "base"), None)
+    base = next((h for h in out["harnesses"] if h["label"] == base_label), None)
     if base is not None:
         for h in out["harnesses"]:
-            if h["label"] != "base":
+            if h["label"] != base_label:
                 # basin-paired test on run-averaged NSE (ignores run-to-run noise, so optimistic)
-                h["p_vs_base"] = float(wilcoxon(per[h["label"]], per["base"], nan_policy="omit").pvalue)
+                h["p_vs_base"] = float(wilcoxon(per[h["label"]], per[base_label], nan_policy="omit").pvalue)
                 # run-level test: this harness's run medians vs the base harness's run medians
                 h["p_runs_vs_base"] = float(mannwhitneyu(h["run_nse"], base["run_nse"]).pvalue)
     refmed = float(ref.nse.median())
@@ -566,16 +568,69 @@ def _exp3_report(task: str, ids, ref) -> dict:
             runs = [x for h in hs for x in h["run_nse"]]
             out["groups"][g] = {"n_harnesses": len(hs), "mean_of_means": round(float(np.mean([h["mean_run_nse"] for h in hs])), 4),
                                 "n_runs": len(runs), "n_runs_above_reference": int(sum(r > refmed for r in runs))}
-            if g != "base" and base is not None:
+            if base is not None and base["group"] != g:
                 out["groups"][g]["p_runs_vs_base"] = float(mannwhitneyu(runs, base["run_nse"]).pvalue)
+    return out
+
+
+def _selected(ns: str, task: str, prefix: str):
+    sel = config.RUNS / "adapt" / ns / task / "summary.json"
+    if sel.is_file():
+        js = json.loads(sel.read_text())
+        return prefix + str((js.get("selections") or {}).get("agg", {}).get("chosen_label"))
+    return None
+
+
+H9 = ("inv1", "inv2", "inv3", "dom1", "dom2", "dom3", "agg1", "agg2", "agg3")
+
+
+def _exp3_report(task: str, ids, ref) -> dict:
+    """Experiment 3: Opus editor vs Sonnet editor (Sonnet agent), parallel k=3, 3 runs per harness."""
+    from scipy.stats import mannwhitneyu
+    R = config.RUNS / "rollouts"
+    groups = {
+        "base": [("base", sorted(R.glob(f"camels-calib-oc-agg10/{task}/base*")) + sorted(R.glob(f"camels-calib-oc-agg3/{task}/base*")))],
+        "sonnet_editor": [(f"sonnet-{h}", [R / f"camels-calib-oc-seq10/{task}/{h}"] + sorted(R.glob(f"replicates/{task}/sonnetimp-{h}/r*")))
+                          for h in ("inv1", "dom1", "c1")],
+        "opus_editor": [(f"opus-{h}", [R / f"camels-calib-oc-agg3/{task}/{h}"] + sorted(R.glob(f"replicates/{task}/opusimp-{h}/r*")))
+                        for h in H9],
+    }
+    out = _harness_groups(task, ids, ref, groups, "base")
     so = [h["mean_run_nse"] for h in out["harnesses"] if h["group"] == "sonnet_editor"]
     op = [h["mean_run_nse"] for h in out["harnesses"] if h["group"] == "opus_editor"]
     if len(so) >= 2 and len(op) >= 2:
         out["p_opus_vs_sonnet_editor"] = float(mannwhitneyu(op, so).pvalue)
-    sel = next((p for p in (config.RUNS / "adapt").glob(f"camels-calib-oc-agg3/{task}/summary.json")), None)
-    if sel is not None:
-        js = json.loads(sel.read_text())
-        out["selected"] = "opus-" + str((js.get("selections") or {}).get("agg", {}).get("chosen_label"))
+    sel = _selected("camels-calib-oc-agg3", task, "opus-")
+    if sel:
+        out["selected"] = sel
+    return out
+
+
+def _exp4_report(task: str, ids, ref, exp3: Optional[dict] = None, slug: str = "gemini-4-argon-high") -> dict:
+    """Experiment 4: Gemini 4 Argon through the Antigravity CLI as the agent, Opus 5.5 as the
+    Harness² editor (parallel k=3, 3 runs per harness), against experiment 3's Sonnet agent."""
+    from scipy.stats import mannwhitneyu
+    R = config.RUNS / "rollouts"
+    ns, rep = f"camels-calib-ag-{slug}-agg3", f"replicates-ag-{slug}"
+    groups = {
+        "argon_base": [("argon-base", sorted(R.glob(f"{ns}/{task}/base*")) + sorted(R.glob(f"{rep}/{task}/base/r*")))],
+        "argon_opus_editor": [(f"argon-{h}", [R / f"{ns}/{task}/{h}"] + sorted(R.glob(f"{rep}/{task}/argon-{h}/r*")))
+                              for h in H9],
+    }
+    out = _harness_groups(task, ids, ref, groups, "argon-base")
+    out["agent"] = f"agy/{slug}"
+    sel = _selected(ns, task, "argon-")
+    if sel:
+        out["selected"] = sel
+    if exp3 and exp3.get("harnesses"):          # the same comparison with the Sonnet agent
+        runs = lambda E, g: [x for h in E["harnesses"] if h["group"] == g for x in h["run_nse"]]  # noqa: E731
+        cmp = {}
+        for mine, theirs, key in (("argon_base", "base", "base"), ("argon_opus_editor", "opus_editor", "opus_edited")):
+            a_, b_ = runs(out, mine), runs(exp3, theirs)
+            if len(a_) >= 2 and len(b_) >= 2:
+                cmp[key] = {"argon_mean": round(sum(a_) / len(a_), 4), "sonnet_mean": round(sum(b_) / len(b_), 4),
+                            "p_runs": float(mannwhitneyu(a_, b_).pvalue)}
+        out["vs_sonnet_agent"] = cmp
     return out
 
 

@@ -85,6 +85,12 @@ footer ul { padding-left: 18px; margin: 4px 0; }
   <div id="exp3chart" class="chart" style="min-height:440px"></div>
   <div class="tablewrap"><table id="exp3table"></table></div>
 </div>
+<div class="card" id="exp4card" hidden>
+  <h2>Gemini 4 Argon as the agent (Antigravity CLI), Opus 5.5 as editor, 3 runs per harness</h2>
+  <p class="desc" id="exp4desc"></p>
+  <div id="exp4chart" class="chart" style="min-height:440px"></div>
+  <div class="tablewrap"><table id="exp4table"></table></div>
+</div>
 <div class="card">
   <h2>Differentiable baseline across splits</h2>
   <p class="desc">Median test NSE on the held-out basins of every split. Random folds hold out basins interspersed with the training gauges; leave-region-out splits hold out a whole NOAA climate region. The reference column transfers the released per-basin calibrations by attribute similarity; the agent only ran on the split marked with ●.</p>
@@ -245,21 +251,19 @@ footer ul { padding-left: 18px; margin: 4px 0; }
         yaxis: {title: 'Median test NSE (126 basins)', gridcolor: css('--grid'), tickfont: {color: css('--muted')}}}), cfg);
     }
 
-    // ---- experiment 3: editor model, replicated harness scores ----
-    const E3 = C.exp3 || {};
-    if (E3.harnesses && E3.harnesses.some(h => h.group === 'opus_editor')) {
-      document.getElementById('exp3card').hidden = false;
-      const gname = {base: 'Base harness', sonnet_editor: 'Sonnet 5.5 editor (k=10 run, round 1)', opus_editor: 'Opus 5.5 editor (parallel, k=3)'};
-      const gcol = {base: '--s2', sonnet_editor: '--s5', opus_editor: '--s1'};
-      const b = E3.harnesses.find(h => h.group === 'base');
-      const pf = p => p === undefined || p === null ? '–' : (p < 0.001 ? '< 0.001' : p.toFixed(3));
-      document.getElementById('exp3desc').textContent =
-        `Agent model fixed at Claude Sonnet 5.5; only the model editing the harness differs. Each harness is run 3 times (base harness: ${b ? b.n_runs : '?'} runs) and scored on the 126 held-out Southeast basins. ` +
-        (E3.groups ? Object.entries(E3.groups).map(([g, v]) => `${gname[g]}: mean ${fmt(v.mean_of_means)} over ${v.n_harnesses} harness${v.n_harnesses > 1 ? 'es' : ''}` +
-          (v.n_runs ? `, ${v.n_runs_above_reference}/${v.n_runs} runs above the baseline ensemble` : '') + (v.p_runs_vs_base !== undefined ? ` (runs vs base runs p = ${pf(v.p_runs_vs_base)})` : '')).join(' · ') : '') +
-        (E3.p_opus_vs_sonnet_editor !== undefined ? ` · Opus vs Sonnet editor (harness means, Mann–Whitney): p = ${pf(E3.p_opus_vs_sonnet_editor)}.` : '') +
-        (E3.selected ? ` Harness² selected ${E3.selected}.` : '');
-      const hs = E3.harnesses, xs = hs.map(h => h.label + (('opus-' + (E3.selected || '').replace('opus-', '')) === h.label ? ' ★' : ''));
+    // ---- experiments 3 and 4: replicated harness scores, one card per experiment ----
+    const pv = p => p === undefined || p === null ? '–' : (p < 0.001 ? '< 0.001' : p.toFixed(3));
+    function harnessCard(key, E, gname, gcol, gshort, intro, extra) {
+      const card = document.getElementById(key + 'card');
+      if (!E || !E.harnesses || !E.harnesses.length) return;
+      card.hidden = false;
+      const b = E.harnesses.find(h => h.group === Object.keys(gname)[0]);
+      document.getElementById(key + 'desc').textContent = intro(b) +
+        (E.groups ? Object.entries(E.groups).map(([g, v]) => `${gname[g]}: mean ${fmt(v.mean_of_means)} over ${v.n_harnesses} harness${v.n_harnesses > 1 ? 'es' : ''}` +
+          (v.n_runs ? `, ${v.n_runs_above_reference}/${v.n_runs} runs above the baseline ensemble` : '') + (v.p_runs_vs_base !== undefined ? ` (runs vs base runs p = ${pv(v.p_runs_vs_base)})` : '')).join(' · ') : '') +
+        (extra ? extra(E) : '') + (E.selected ? ` Harness² selected ${E.selected}.` : '') +
+        (E.n_flagged_excluded ? ` ${E.n_flagged_excluded} rollout(s) flagged by the audit are left out.` : '');
+      const hs = E.harnesses, xs = hs.map(h => h.label + (E.selected === h.label ? ' ★' : ''));
       const tr = [];
       if (b) {
         tr.push({x: [xs[0], xs[xs.length - 1]], y: [b.mean_run_nse + (b.sd_run_nse || 0), b.mean_run_nse + (b.sd_run_nse || 0)], mode: 'lines', line: {width: 0}, hoverinfo: 'skip', showlegend: false});
@@ -275,16 +279,34 @@ footer ul { padding-left: 18px; margin: 4px 0; }
       });
       const refv = st[C.reference || 'dpl'].nse_median;
       tr.push({x: [xs[0], xs[xs.length - 1]], y: [refv, refv], mode: 'lines', name: 'differentiable baseline (3-seed ensemble)', line: {color: css('--s3'), width: 2, dash: 'dash'}, hoverinfo: 'skip'});
-      Plotly.react('exp3chart', tr, layout({margin: {l: 52, r: 16, t: 90, b: 90}, showlegend: true, legend: {orientation: 'h', y: 1.02, yanchor: 'bottom', x: 0}, hovermode: 'closest',
+      Plotly.react(key + 'chart', tr, layout({margin: {l: 52, r: 16, t: 90, b: 90}, showlegend: true, legend: {orientation: 'h', y: 1.02, yanchor: 'bottom', x: 0}, hovermode: 'closest',
         xaxis: {type: 'category', categoryarray: xs, gridcolor: css('--grid'), tickfont: {color: css('--muted')}},
         yaxis: {title: 'Median test NSE (126 basins)', gridcolor: css('--grid'), tickfont: {color: css('--muted')}}}), cfg);
-      const tb = document.getElementById('exp3table');
+      const tb = document.getElementById(key + 'table');
+      tb.innerHTML = '';
       const h0 = tb.createTHead().insertRow();
       ['Harness', 'Editor', 'Runs', 'Run medians', 'Mean', 'sd', 'Basin-averaged median', 'p vs baseline (basins)', 'p vs base (runs)'].forEach(t => { const th = document.createElement('th'); th.textContent = t; h0.appendChild(th); });
       const tbd = tb.createTBody();
       hs.forEach((h, i) => { const r = tbd.insertRow();
-        [xs[i], {base: '–', sonnet_editor: 'Sonnet 5.5', opus_editor: 'Opus 5.5'}[h.group], h.n_runs, h.run_nse.length > 4 ? `${fmt(Math.min(...h.run_nse))}–${fmt(Math.max(...h.run_nse))}` : h.run_nse.map(fmt).join(' · '), fmt(h.mean_run_nse), h.sd_run_nse === null ? '–' : fmt(h.sd_run_nse), fmt(h.avg_basin_nse_median), pf(h.p_vs_dpl), pf(h.p_runs_vs_base)].forEach(v => { r.insertCell().textContent = v; }); });
+        [xs[i], gshort[h.group], h.n_runs, h.run_nse.length > 4 ? `${fmt(Math.min(...h.run_nse))}–${fmt(Math.max(...h.run_nse))}` : h.run_nse.map(fmt).join(' · '), fmt(h.mean_run_nse),
+         h.sd_run_nse === null ? '–' : fmt(h.sd_run_nse), fmt(h.avg_basin_nse_median), pv(h.p_vs_dpl), pv(h.p_runs_vs_base)].forEach(v => { r.insertCell().textContent = v; }); });
     }
+    const E3 = C.exp3 || {};
+    if (E3.harnesses && E3.harnesses.some(h => h.group === 'opus_editor')) {
+      harnessCard('exp3', E3,
+        {base: 'Base harness', sonnet_editor: 'Sonnet 5.5 editor (k=10 run, round 1)', opus_editor: 'Opus 5.5 editor (parallel, k=3)'},
+        {base: '--s2', sonnet_editor: '--s5', opus_editor: '--s1'},
+        {base: '–', sonnet_editor: 'Sonnet 5.5', opus_editor: 'Opus 5.5'},
+        b => `Agent model fixed at Claude Sonnet 5.5; only the model editing the harness differs. Each harness is run 3 times (base harness: ${b ? b.n_runs : '?'} runs) and scored on the 126 held-out Southeast basins. `,
+        E => E.p_opus_vs_sonnet_editor !== undefined ? ` · Opus vs Sonnet editor (harness means, Mann–Whitney): p = ${pv(E.p_opus_vs_sonnet_editor)}.` : '');
+    }
+    const E4 = C.exp4 || {};
+    harnessCard('exp4', E4,
+      {argon_base: 'Base harness, Gemini agent', argon_opus_editor: 'Opus 5.5 editor, Gemini agent (parallel, k=3)'},
+      {argon_base: '--s2', argon_opus_editor: '--s4'},
+      {argon_base: '–', argon_opus_editor: 'Opus 5.5'},
+      b => `Agent: Gemini 4 Argon (High) through Google's Antigravity CLI, with web search, URL tools and downloads blocked; editor: Claude Opus 5.5. Each harness is run 3 times (base harness: ${b ? b.n_runs : '?'} runs) on the same 126 held-out Southeast basins as the experiment above. `,
+      E => { const v = E.vs_sonnet_agent || {}; return Object.entries(v).map(([k, c]) => ` · ${k === 'base' ? 'Base harness' : 'Opus-edited harnesses'}: Gemini ${fmt(c.argon_mean)} vs Sonnet ${fmt(c.sonnet_mean)} (runs, p = ${pv(c.p_runs)})`).join('') + (Object.keys(v).length ? '.' : ''); });
     const sp = document.getElementById('splits');
     const sh = sp.createTHead().insertRow();
     ['Split', 'Kind', 'Held-out basins', 'Differentiable baseline NSE', 'Baseline KGE', 'Reference transfer NSE', 'Gauged upper bound NSE'].forEach(t => { const th = document.createElement('th'); th.textContent = t; sh.appendChild(th); });
