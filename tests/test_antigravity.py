@@ -177,7 +177,17 @@ def test_render_audit_and_failure_detection(tmp_path, monkeypatch):
     a = AG.audit(ev, NETWORK_PATTERNS)
     # the refused search is not a leak; the curl attempt is flagged
     assert a["flagged"] is True and "curl" in a["network_pattern_hits"] and a["web_tools_used"] == []
-    assert AG.check_ran(tmp_path, 0) == {"steps": 4, "status": "SUCCESS"}   # the prompt is not a step
+    assert AG.check_ran(tmp_path, 0) == {"steps": 4, "status": "SUCCESS", "error": ""}   # the prompt is not a step
+    # startup sign-in noise and a stalled stream after real work are not failures
+    (tmp_path / "agy.log").write_text("E1021 errorreport.go:224] error getting token source: You are not logged into Antigravity.\n")
+    stalled = _events(tmp_path / "s" / "events.jsonl" if (tmp_path / "s").mkdir() is None else None, [
+        _tool(1, "run_command", {"CommandLine": "ls"}, output="x"),
+        {"event": "result", "result": {"status": "ERROR", "error": "API error: stream idle timeout (5m0s)"}}])
+    (tmp_path / "s" / "agy.log").write_text("E1021 You are not logged into Antigravity.\n")
+    assert AG.check_ran(stalled.parent, 1)["status"] == "ERROR"
+    # agy reading back its own saved output is not network evidence
+    own = _events(tmp_path / "own.jsonl", [_tool(1, "read_file", {"Path": "/x/.cache/hydroagent/runs/r1/.agyhome/.gemini/antigravity-cli/brain/s/output.txt"}, output="x")])
+    assert AG.audit(own, NETWORK_PATTERNS)["flagged"] is False
     leaked = _events(tmp_path / "leak.jsonl", [_tool(1, "search_web", {"query": "USGS 02177000"}, output="Chattooga")])
     assert AG.audit(leaked, NETWORK_PATTERNS)["web_tools_used"] == ["search_web"]
     assert AG.audit(ev, NETWORK_PATTERNS)["web_tools_refused"] == ["search_web"]
@@ -282,7 +292,8 @@ FAKE_AGY = textwrap.dedent('''\
               "deny": "read_url(*)" in s["permissions"]["deny"], "no_global_rules": not (gem / "GEMINI.md").exists(),
               "no_web_hook": (gem / "config/hooks.json").is_file(),
               "proxy": os.environ.get("HTTPS_PROXY", "").startswith("http://127.0.0.1:"),
-              "probe_refused": probe.returncode != 0, "outside_cache": ".cache/hydroagent" not in str(ws),
+              "probe_refused": probe.returncode != 0,
+              "outside_cache": ".cache/hydroagent" not in str(ws) + os.environ["HOME"],
               "stream": sys.argv[sys.argv.index("--output-format") + 1], "stdin_closed": sys.stdin.read() == ""}
     print(json.dumps({"event": "init", "init": {"model": sys.argv[sys.argv.index("--model") + 1], "cwd": str(ws)}}))
     (ws / "output" / "code").mkdir(parents=True, exist_ok=True)
@@ -324,6 +335,7 @@ def test_rollout_through_agy_path(tmp_path, monkeypatch):
     # the agent's refused download is on record and flags the rollout
     assert meta["audit"]["proxy_denied"] == ["zenodo.org"] and meta["audit"]["flagged"] is True
     assert a.delivered(out) and not (out / ".agyhome").exists()
+    assert not list((tmp_path / "agy_ws").glob("*/.agyhome"))            # removed with the workspace
     assert "[ACTION] run_command(" in a.trajectory(out, obs_trunc=500)
     assert a.execute(task, None, rid) == out                 # cached rollout by the same executor is reused
     monkeypatch.setattr(h2c, "SOLVER_MODEL_OC", "agy/other-model")

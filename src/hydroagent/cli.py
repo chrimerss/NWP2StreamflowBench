@@ -656,12 +656,12 @@ def cmd_agy_smoke(a) -> int:
     venv = str(Path(sys.executable).parent)
     try:
         ms = subprocess.run([str(b), "models"], capture_output=True, text=True, stdin=subprocess.DEVNULL,
-                            timeout=120, env=AG.env_for(out, out, venv_bin=venv, proxy=None))
+                            timeout=120, env=AG.env_for(out, AG.ws_root(), venv_bin=venv, proxy=None))
         listing = (ms.stdout + ms.stderr).strip()
     except subprocess.TimeoutExpired:
         listing = "(agy models timed out)"
     finally:
-        shutil.rmtree(out / ".agyhome", ignore_errors=True)
+        shutil.rmtree(AG.ws_root() / ".agyhome", ignore_errors=True)
     (out / "models.txt").write_text(listing)
     print("models:\n" + listing[:2000])
     ws = AG.ws_root() / "smoke"

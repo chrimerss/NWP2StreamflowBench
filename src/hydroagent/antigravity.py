@@ -82,6 +82,7 @@ DENY = [
     r"command(regex:(?s).*\b(pip3?|uv|conda|mamba|micromamba|brew|npm|pnpm|yarn|apt|apt-get)\s+(install|add)\b.*)",
 ]
 WEB_TOOL = None   # set below from DENY_TOOLS: the tools the hook refuses are the ones the audit counts
+AGY_OWN = re.compile(r"[^\s\"']*/\.agyhome/[^\s\"']*")
 # Tools a PreToolUse hook hard-denies. search_web runs on Google's side, so neither the
 # permission rules nor the fence can stop it; agy 1.4.3 answered "USGS 02177000" with the
 # gauge's river and town. One matcher group per name, since the matcher syntax is loosely
@@ -425,14 +426,17 @@ def stage(render: Path, ws: Path) -> dict:
     return info
 
 
-def env_for(ws: Path, run_dir: Path, *, venv_bin: str, proxy: Optional[str],
+def env_for(ws: Path, home_parent: Path, *, venv_bin: str, proxy: Optional[str],
             base: Optional[dict] = None) -> dict:
+    """Environment for one agy process. ``home_parent`` receives the isolated home: rollouts
+    put it next to the workspace (outside the hydroagent cache, whose path would otherwise
+    show the agent where the hidden target mapping lives)."""
     inherited = {k: v for k, v in (base if base is not None else os.environ).items()
                  if k not in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY",
                               "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "ALL_PROXY",
                               "all_proxy", "NO_PROXY", "no_proxy") + STRIP_ENV}
     env = {**inherited,
-           "HOME": str(isolated_home(run_dir, ws=ws)),
+           "HOME": str(isolated_home(home_parent, ws=ws)),
            "PATH": f"{venv_bin}:{inherited.get('PATH', '')}",
            "PYTHONPATH": str(ws), "HYDRO_WORKSPACE": str(ws)}
     if proxy:
@@ -473,8 +477,9 @@ def launch(ws: Path, out: Path, prompt: str, model: str, timeout: int, *, venv_b
     try:
         if fence:
             fence.__enter__()
-        env = env_for(ws, out, venv_bin=venv_bin, proxy=fence.url if fence else None)
-        hook0 = hook_fingerprint(Path(env["HOME"]))
+        env = env_for(ws, Path(ws).parent, venv_bin=venv_bin, proxy=fence.url if fence else None)
+        home = Path(env["HOME"])
+        hook0 = hook_fingerprint(home)
         with open(out / "events.jsonl", "w") as so, open(out / "stderr.log", "w") as se:
             # stdin closed: print mode otherwise waits on an open stdin when not on a TTY
             p = subprocess.Popen(argv(prompt, model, timeout, effort, out / "agy.log"), cwd=ws, env=env,
@@ -503,34 +508,45 @@ def launch(ws: Path, out: Path, prompt: str, model: str, timeout: int, *, venv_b
             (out / "proxy.json").write_text(json.dumps(fence.summary(), indent=1))
             fence.__exit__(None, None, None)
         try:
-            same = hook_fingerprint(out / ".agyhome") == hook0
+            same = hook_fingerprint(home) == hook0
         except (OSError, NameError):
             same = False
         (out / "hook_check.json").write_text(json.dumps({"hooks_intact": same}))
-        shutil.rmtree(out / ".agyhome", ignore_errors=True)
+        try:
+            shutil.rmtree(home, ignore_errors=True)
+        except NameError:
+            pass
+
+
+QUOTA = re.compile(r"quota|rate.?limit|\b429\b|resource.?exhausted|credits? (exhausted|exceeded|remaining: 0)",
+                   re.IGNORECASE)
 
 
 def check_ran(out: Path, rc: int) -> dict:
-    """Raise AgyFailure when agy did not actually work on the task. agy 1.4.3 reports errors
-    in its log file and the result, not on stderr, so all three are searched."""
+    """Raise AgyFailure when agy did not actually work on the task.
+
+    agy 1.4.3 reports errors in its log file and the result, not on stderr. Its log also
+    says "not logged into Antigravity" at every start, before the keychain token is read,
+    so sign-in errors count only when nothing was done; after work began, only a quota or
+    rate-limit stop aborts the run (a stalled model stream is an ordinary bad rollout)."""
     out = Path(out)
     ev = out / "events.jsonl"
     worked = [b for b in steps(ev) if b.get("step_type") in ("tool", "agent_response") or tool_call(b)[0]]
     res = result(ev)
     status = str(res.get("status", "")).upper()
-    text = (out / "stderr.log").read_text(errors="replace")[-4000:] if (out / "stderr.log").is_file() else ""
+    err = (out / "stderr.log").read_text(errors="replace")[-4000:] if (out / "stderr.log").is_file() else ""
+    tail = ""
     if (out / "agy.log").is_file():
-        text += "\n".join(ln for ln in (out / "agy.log").read_text(errors="replace").splitlines()[-400:]
-                          if ln.startswith(("E", "F")))
-    text += "\n" + str(_first(res, _TEXT) or "") + "\n" + str(res.get("error") or "")
-    text += "\n".join(str(tool_call(b)[3] or "") for b in steps(ev) if str(b.get("state", "")).upper() == "ERROR")
-    why = FAILURE.search(text)
+        tail = "\n".join(ln for ln in (out / "agy.log").read_text(errors="replace").splitlines()[-400:]
+                         if ln.startswith(("E", "F")))
+    final = "\n".join([str(_first(res, _TEXT) or ""), str(res.get("error") or "")])
     if not worked and status != "SUCCESS":
-        raise AgyFailure(f"agy exit {rc}, status {status or '-'}, nothing done; {text.strip()[-600:]}")
-    if why and status != "SUCCESS":
-        raise AgyFailure(f"agy stopped on sign-in or quota (exit {rc}, {len(worked)} steps): {why.group(0)}; "
-                         f"{text.strip()[-600:]}")
-    return {"steps": len(worked), "status": status}
+        raise AgyFailure(f"agy exit {rc}, status {status or '-'}, nothing done; {(err + final).strip()[-600:]}")
+    why = QUOTA.search("\n".join([err, final, tail])) if status != "SUCCESS" else None
+    if why:
+        raise AgyFailure(f"agy stopped on quota or rate limit (exit {rc}, {len(worked)} steps): {why.group(0)}; "
+                         f"{(err + final).strip()[-600:]}")
+    return {"steps": len(worked), "status": status, "error": str(res.get("error") or "")[:300]}
 
 
 # ---------------------------------------------------------------- event stream
@@ -678,6 +694,7 @@ def audit(path: Path, patterns: re.Pattern) -> dict:
             refused.add(tool)       # attempted, refused by the hook: no data reached the agent
             continue
         text = args if isinstance(args, str) else json.dumps(args, default=str) if args is not None else ""
+        text = AGY_OWN.sub(" ", text)      # agy saves long outputs under its home and reads them back
         if WEB_TOOL.match(tool):
             web.add(tool)
         for m in patterns.finditer(text):
